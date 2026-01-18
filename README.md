@@ -91,7 +91,11 @@ Or if installed from source:
 pnpm run cli
 ```
 
-Use arrow keys to navigate results and press Enter to play.
+Features:
+- Use arrow keys to navigate search results
+- Press Enter to select a track
+- Choose an action: Play now, Add to queue, or Play next
+- Press Ctrl+C to exit
 
 ### Development Mode
 
@@ -149,19 +153,46 @@ Response:
 
 ### Play
 
+Play a track immediately (preserves current queue):
+
 ```bash
-echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890"}' | nc -U /tmp/roonpipe.sock
+echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"playNow"}' | nc -U /tmp/roonpipe.sock
 ```
+
+Add to the queue:
+
+```bash
+echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"queue"}' | nc -U /tmp/roonpipe.sock
+```
+
+Play next (add after current track):
+
+```bash
+echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"addNext"}' | nc -U /tmp/roonpipe.sock
+```
+
+Replace the queue and play immediately:
+
+```bash
+echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"play"}' | nc -U /tmp/roonpipe.sock
+```
+
+Available actions:
+- `play` (default) — Replace queue and play immediately
+- `playNow` — Play immediately while preserving the queue (adds next and skips)
+- `queue` — Add to the end of the queue
+- `addNext` — Add after the current track
 
 ## Project Structure
 
 ```
 src/
-├── index.ts    # Entry point, daemon/CLI mode switching
-├── roon.ts     # Roon API connection and browsing
-├── mpris.ts    # MPRIS player, notifications, metadata
-├── socket.ts   # Unix socket server
-└── cli.ts      # Interactive terminal interface
+├── index.ts         # Entry point, daemon/CLI mode switching
+├── roon.ts          # Roon API connection and browsing
+├── mpris.ts         # MPRIS player, notifications, metadata
+├── socket.ts        # Unix socket server
+├── image-cache.ts   # Album artwork caching
+└── cli.ts           # Interactive terminal interface
 ```
 
 ## Contributing

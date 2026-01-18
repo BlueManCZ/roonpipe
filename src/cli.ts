@@ -2,6 +2,8 @@ import net from "node:net";
 import readline from "node:readline";
 import { Separator, select } from "@inquirer/prompts";
 
+type PlayAction = "playNow" | "queue" | "addNext";
+
 interface SearchResult {
     title: string;
     subtitle: string;
@@ -108,18 +110,47 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
     }
 }
 
-async function playTrack(track: SearchResult): Promise<void> {
-    console.log(`\n▶️ Playing: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`);
+async function selectAction(): Promise<PlayAction | null> {
+    try {
+        const action = await select<PlayAction | "back">({
+            message: "What do you want to do?",
+            choices: [
+                { name: "▶️  Play now", value: "playNow" as PlayAction },
+                { name: "📋  Add to queue", value: "queue" as PlayAction },
+                { name: "⏭️  Play next", value: "addNext" as PlayAction },
+                new Separator(),
+                { name: "← Back", value: "back" },
+            ],
+            theme: { prefix: "" },
+        });
+
+        return action === "back" ? null : action;
+    } catch {
+        return null;
+    }
+}
+
+async function playTrack(track: SearchResult, action: PlayAction): Promise<void> {
+    const actionLabels: Record<PlayAction, string> = {
+        playNow: "▶️ Playing",
+        queue: "📋 Added to queue",
+        addNext: "⏭️ Playing next",
+    };
+
+    console.log(
+        `\n${actionLabels[action]}: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`,
+    );
 
     try {
         await sendCommand({
             command: "play",
             item_key: track.item_key,
             session_key: track.sessionKey,
+            action,
         });
-        console.log("✅ Playback started!\n");
+        console.log("✅  Success!\n");
     } catch (error) {
-        console.error("❌ Failed to play track:", error);
+        console.error("❌  Failed:", error);
     }
 }
 
@@ -151,6 +182,13 @@ export async function startCLI() {
             continue;
         }
 
-        await playTrack(selected);
+        const action = await selectAction();
+
+        if (action === null) {
+            // User chose "Back", continue to track selection
+            continue;
+        }
+
+        await playTrack(selected, action);
     }
 }

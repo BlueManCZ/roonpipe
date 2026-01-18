@@ -23,7 +23,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.0",
+        display_version: "1.0.2",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -134,7 +134,7 @@ export function searchRoon(query: string): Promise<SearchResult[]> {
                     );
 
                     if (!tracksCategory) {
-                        // No tracks category found - return empty array
+                        // No tracks category found - return an empty array
                         resolve([]);
                         return;
                     }
@@ -194,7 +194,50 @@ export function searchRoon(query: string): Promise<SearchResult[]> {
     });
 }
 
-export function playItem(itemKey: string, sessionKey: string): Promise<void> {
+export type PlayAction = "play" | "playNow" | "queue" | "addNext";
+
+const ACTION_TITLES: Record<Exclude<PlayAction, "playNow">, string[]> = {
+    play: ["Play Now", "Play"],
+    queue: ["Queue", "Add to Queue"],
+    addNext: ["Play From Here", "Add Next"],
+};
+
+/**
+ * Skip to the next track in the queue
+ */
+function skipToNext(): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (!coreInstance || !zone) {
+            reject("Not connected");
+            return;
+        }
+        coreInstance.services.RoonApiTransport.control(zone, "next", (err: any) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+}
+
+export async function playItem(
+    itemKey: string,
+    sessionKey: string,
+    action: PlayAction = "play",
+): Promise<void> {
+    // "playNow" = add next + skip to it (preserves queue)
+    if (action === "playNow") {
+        await playItemInternal(itemKey, sessionKey, "addNext");
+        await skipToNext();
+        return;
+    }
+
+    return playItemInternal(itemKey, sessionKey, action);
+}
+
+function playItemInternal(
+    itemKey: string,
+    sessionKey: string,
+    action: Exclude<PlayAction, "playNow">,
+): Promise<void> {
     return new Promise((resolve, reject) => {
         if (!coreInstance) {
             reject("Roon Core not connected");
@@ -207,6 +250,7 @@ export function playItem(itemKey: string, sessionKey: string): Promise<void> {
         }
 
         const browse = coreInstance.services.RoonApiBrowse;
+        const actionTitles = ACTION_TITLES[action];
 
         function loadUntilAction(currentItemKey: string, depth: number = 0) {
             if (depth > 5) {
@@ -247,25 +291,25 @@ export function playItem(itemKey: string, sessionKey: string): Promise<void> {
                                 return;
                             }
 
-                            const playNowAction = loadResult.items.find(
+                            const targetAction = loadResult.items.find(
                                 (item: any) =>
                                     item.hint === "action" &&
-                                    (item.title === "Play Now" || item.title === "Play"),
+                                    actionTitles.some((title) => item.title === title),
                             );
 
-                            if (playNowAction) {
+                            if (targetAction) {
                                 browse.browse(
                                     {
                                         hierarchy: "search",
                                         multi_session_key: sessionKey,
-                                        item_key: playNowAction.item_key,
+                                        item_key: targetAction.item_key,
                                         zone_or_output_id: zone.zone_id,
                                     },
                                     (playError: any) => {
                                         if (playError) {
                                             reject(playError);
                                         } else {
-                                            console.log("Successfully started playback");
+                                            console.log(`Successfully executed action: ${action}`);
                                             resolve();
                                         }
                                     },
@@ -278,7 +322,7 @@ export function playItem(itemKey: string, sessionKey: string): Promise<void> {
                                 if (actionList) {
                                     loadUntilAction(actionList.item_key, depth + 1);
                                 } else {
-                                    reject("Could not find Play action or next level");
+                                    reject(`Could not find ${action} action or next level`);
                                 }
                             }
                         },

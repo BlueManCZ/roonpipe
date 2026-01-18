@@ -9,6 +9,35 @@ export interface SocketHandlers {
     play: (itemKey: string, sessionKey: string) => Promise<any>;
 }
 
+/**
+ * Check if another instance is already running by trying to connect to the socket
+ */
+export function isInstanceRunning(): Promise<boolean> {
+    return new Promise((resolve) => {
+        if (!fs.existsSync(SOCKET_PATH)) {
+            resolve(false);
+            return;
+        }
+
+        const client = net.createConnection({ path: SOCKET_PATH }, () => {
+            // Connection successful - another instance is running
+            client.end();
+            resolve(true);
+        });
+
+        client.on("error", () => {
+            // Connection failed - socket is stale, no instance running
+            resolve(false);
+        });
+
+        // Timeout after 1 second
+        client.setTimeout(1000, () => {
+            client.destroy();
+            resolve(false);
+        });
+    });
+}
+
 export function startSocketServer(handlers: SocketHandlers) {
     // Remove old socket if exists
     if (fs.existsSync(SOCKET_PATH)) {

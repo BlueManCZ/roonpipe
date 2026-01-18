@@ -1,5 +1,5 @@
 {
-    "name": "roon-pipe",
+    "name": "roonpipe",
     "version": "1.0.0",
     "description": "Linux integration for Roon – MPRIS support, media keys, desktop notifications, and interactive search CLI",
     "main": "dist/index.js",
@@ -25,7 +25,7 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/BlueManCZ/roon-pipe.git"
+        "url": "https://github.com/BlueManCZ/roonpipe.git"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.3.11",

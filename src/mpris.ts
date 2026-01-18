@@ -223,8 +223,13 @@ export function updateMprisMetadata(zone: any, core: any) {
         "mpris:artUrl": `file://${artworkPath}`,
     };
 
-    mpris.canPlay = zone.is_play_allowed;
-    mpris.canPause = zone.is_pause_allowed;
+    // For playpause to work, we need canPlay OR canPause to be true
+    // When playing: is_pause_allowed=true, is_play_allowed=false
+    // When paused: is_pause_allowed=false, is_play_allowed=true
+    // We set both to true if either action is allowed, so playpause always works
+    const canTogglePlayback = zone.is_play_allowed || zone.is_pause_allowed;
+    mpris.canPlay = canTogglePlayback;
+    mpris.canPause = canTogglePlayback;
     mpris.canGoNext = zone.is_next_allowed;
     mpris.canGoPrevious = zone.is_previous_allowed;
     mpris.playbackStatus = zone.state === "playing" ? "Playing" : "Paused";

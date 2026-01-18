@@ -47,14 +47,14 @@ Found 50 track(s):
 ### From npm (recommended)
 
 ```bash
-npm install -g roon-pipe
+npm install -g roonpipe
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/BlueManCZ/roon-pipe.git
-cd roon-pipe
+git clone https://github.com/BlueManCZ/roonpipe.git
+cd roonpipe
 pnpm install
 pnpm build
 ```

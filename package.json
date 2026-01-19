@@ -8,6 +8,7 @@
     },
     "scripts": {
         "build": "tsc",
+        "postbuild": "tsx scripts/add-shebang.ts",
         "start": "node dist/index.js",
         "dev": "nodemon src/index.ts",
         "cli": "tsc && node dist/index.js --cli",
@@ -33,6 +34,7 @@
         "@types/node-notifier": "^8.0.5",
         "nodemon": "^3.1.11",
         "ts-node": "^10.9.2",
+        "tsx": "^4.21.0",
         "typescript": "^5.9.3"
     },
     "files": [

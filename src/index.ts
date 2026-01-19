@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { startCLI } from "./cli";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
 import { getCore, getZone, initRoon, playItem, searchRoon } from "./roon";

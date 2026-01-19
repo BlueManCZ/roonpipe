@@ -1,0 +1,17 @@
+{
+    "$schema": "https://swc.rs/schema.json",
+    "jsc": {
+        "parser": {
+            "syntax": "typescript"
+        },
+        "target": "es2022",
+        "minify": {
+            "compress": true,
+            "mangle": true
+        }
+    },
+    "module": {
+        "type": "commonjs"
+    },
+    "minify": true
+}

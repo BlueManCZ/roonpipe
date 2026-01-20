@@ -1,14 +1,10 @@
-import fs from "node:fs";
 // @ts-expect-error
 import Player from "mpris-service";
-import notifier from "node-notifier";
+
+import { cacheImage } from "./image-cache";
+import { parseNowPlaying } from "./roon";
 
 let mpris: any = null;
-let lastNotifiedTrack: string | null = null;
-let isInitialLoad = true;
-let lastPlaybackState: string | null = null;
-
-const artworkPath = "/tmp/roon-mpris-cover.jpg";
 
 const loopMap = {
     // Roon -> MPRIS
@@ -126,59 +122,6 @@ export function initMpris(getTransport: () => any, getZone: () => any) {
     console.log("MPRIS player initialized");
 }
 
-function fetchArtwork(core: any, imageKey: string, callback: () => void) {
-    const image = core.services.RoonApiImage;
-
-    image.get_image(
-        imageKey,
-        { scale: "fit", width: 256, height: 256, format: "image/jpeg" },
-        (error: any, _contentType: string, imageData: Buffer) => {
-            if (error) {
-                console.error("Failed to fetch artwork:", error);
-                return;
-            }
-
-            fs.writeFileSync(artworkPath, imageData);
-            console.log("Artwork saved to", artworkPath);
-            callback();
-        },
-    );
-}
-
-function showTrackNotification(zone: any) {
-    if (!zone || !zone.now_playing) return;
-
-    const np = zone.now_playing;
-    const trackId = np.image_key || "";
-    const currentState = zone.state;
-
-    // Skip notification on an initial load
-    if (isInitialLoad) {
-        lastNotifiedTrack = trackId;
-        lastPlaybackState = currentState;
-        isInitialLoad = false;
-        return;
-    }
-
-    // Show notification if the track changed or started playing
-    const trackChanged = trackId !== lastNotifiedTrack;
-    const startedPlaying = currentState === "playing" && lastPlaybackState !== "playing";
-
-    if (trackChanged || startedPlaying) {
-        lastNotifiedTrack = trackId;
-
-        notifier.notify({
-            title: np.three_line?.line1 || "Unknown Track",
-            message: `${np.three_line?.line2 || "Unknown Artist"}\n${np.three_line?.line3 || ""}`,
-            timeout: 5,
-            icon: artworkPath,
-            hint: "string:x-canonical-private-synchronous:roonpipe",
-        });
-    }
-
-    lastPlaybackState = currentState;
-}
-
 function updateVolume(zone: any) {
     if (!mpris) return;
 
@@ -197,7 +140,7 @@ function updateVolume(zone: any) {
     mpris.volume = (vol.value - vol.min) / (vol.max - vol.min);
 }
 
-export function updateMprisMetadata(zone: any, core: any) {
+export async function updateMprisMetadata(zone: any, core: any) {
     if (!mpris) return;
 
     if (!zone || !zone.now_playing) {
@@ -207,21 +150,21 @@ export function updateMprisMetadata(zone: any, core: any) {
     }
 
     const np = zone.now_playing;
+    const data = parseNowPlaying(np);
 
-    // Fetch artwork if image_key exists
-    if (np.image_key) {
-        fetchArtwork(core, np.image_key, () => {
-            showTrackNotification(zone);
-        });
+    // Cache the artwork and get path
+    let artworkPath: string | null = null;
+    if (np.image_key && core?.services?.RoonApiImage) {
+        artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
     }
 
     mpris.metadata = {
         "mpris:trackid": mpris.objectPath(`track/${np.image_key || "0"}`),
-        "xesam:title": np.three_line?.line1 || "Unknown",
-        "xesam:artist": np.three_line?.line2 ? [np.three_line.line2] : [],
-        "xesam:album": np.three_line?.line3 || "",
+        "xesam:title": data.title,
+        "xesam:artist": data.artists,
+        "xesam:album": data.album,
         "mpris:length": (np.length || 0) * 1_000_000,
-        "mpris:artUrl": `file://${artworkPath}`,
+        ...(artworkPath && { "mpris:artUrl": `file://${artworkPath}` }),
     };
 
     // For playpause to work, we need canPlay OR canPause to be true

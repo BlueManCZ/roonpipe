@@ -1,5 +1,6 @@
 import { startCLI } from "./cli";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
+import { showTrackNotification } from "./notification";
 import { getCore, getZone, initRoon, playItem, searchRoon } from "./roon";
 import { isInstanceRunning, startSocketServer } from "./socket";
 
@@ -39,6 +40,8 @@ if (cliMode) {
             onZoneChanged: (zone: any, core: any) => {
                 // Update MPRIS when zone changes
                 updateMprisMetadata(zone, core);
+                // Show desktop notification
+                showTrackNotification(zone, core);
             },
             onSeekChanged: (seekPosition: number) => {
                 // Update MPRIS seek position

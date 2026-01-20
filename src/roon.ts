@@ -19,6 +19,23 @@ export interface RoonCallbacks {
     onSeekChanged: (seekPosition: number) => void;
 }
 
+export const parseNowPlaying = (nowPlaying: any) => {
+    const title = nowPlaying.three_line?.line1 || "Unknown Track";
+
+    // Split artists by "/" separator and select first (Roon provides multiple artists in one string)
+    const artists: string[] = nowPlaying.three_line?.line2
+        ? [nowPlaying.three_line.line2.split(" / ").map((a: string) => a.trim())[0]]
+        : ["Unknown Artist"]; // TODO: Let user choose format
+
+    const album = nowPlaying.three_line?.line3 || "";
+
+    return {
+        title,
+        artists,
+        album,
+    };
+};
+
 export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
@@ -174,8 +191,10 @@ export function searchRoon(query: string): Promise<SearchResult[]> {
 
                                     const items: SearchResult[] =
                                         tracksResult.items?.map((item: any) => ({
-                                            title: item.title || "Unknown",
-                                            subtitle: item.subtitle || "",
+                                            title: item.title || "Unknown Track",
+                                            subtitle: item.subtitle
+                                                ? item.subtitle.split(", ")[0]
+                                                : "Unknown Artist", // TODO: Let user choose format
                                             item_key: item.item_key,
                                             image: cachedImages.get(item.image_key) || null,
                                             hint: item.hint,

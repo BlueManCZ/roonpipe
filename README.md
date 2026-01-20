@@ -11,8 +11,9 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 - **Desktop Notifications** — Get notified when tracks change, complete with album artwork
 - **Playback Controls** — Play, pause, stop, skip, seek, volume, shuffle, and loop
 - **Track Search** — Search your entire Roon library (including TIDAL/Qobuz) via CLI or programmatically
+- **GNOME Search Integration** — Search and play tracks directly from the GNOME overview or search bar
 - **Unix Socket API** — Integrate with other applications using a simple JSON-based IPC protocol
-- **Interactive CLI** — Search and play tracks directly from your terminal
+- **Interactive CLI** — Search and play tracks directly from your terminal with arrow key navigation
 
 ## CLI Example
 
@@ -58,6 +59,16 @@ cd roonpipe
 pnpm install
 pnpm build
 ```
+
+## GNOME Search Provider
+
+To enable searching for tracks directly from the GNOME overview or search bar, install the search provider (requires sudo):
+
+```bash
+sudo ./scripts/install-gnome-search-provider.sh
+```
+
+This will copy the necessary files to system directories and restart the GNOME shell. After installation, you can search for track names in the GNOME search to see RoonPipe results.
 
 ## Usage
 
@@ -187,12 +198,14 @@ Available actions:
 
 ```
 src/
-├── index.ts         # Entry point, daemon/CLI mode switching
-├── roon.ts          # Roon API connection and browsing
-├── mpris.ts         # MPRIS player, notifications, metadata
-├── socket.ts        # Unix socket server
-├── image-cache.ts   # Album artwork caching
-└── cli.ts           # Interactive terminal interface
+├── index.ts                 # Entry point, daemon/CLI mode switching
+├── roon.ts                  # Roon API connection and browsing
+├── mpris.ts                 # MPRIS player and metadata
+├── notification.ts          # Desktop notifications
+├── socket.ts                # Unix socket server
+├── image-cache.ts           # Album artwork caching
+├── gnome-search-provider.ts # GNOME search provider integration
+└── cli.ts                   # Interactive terminal interface
 ```
 
 ## Contributing

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=RoonPipe
+Comment=Search and play music from Roon
+Icon=audio-x-generic
+Type=Application
+Exec=roonpipe %u
+Terminal=false
+Categories=Audio;

@@ -1,4 +1,5 @@
 import { startCLI } from "./cli";
+import { initGnomeSearchProvider } from "./gnome-search-provider";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
 import { showTrackNotification } from "./notification";
 import { getCore, getZone, initRoon, playItem, searchRoon } from "./roon";
@@ -32,6 +33,14 @@ if (cliMode) {
                     search: searchRoon,
                     play: playItem,
                 });
+
+                // Initialize GNOME-Shell Search Provider only on GNOME
+                if (
+                    process.env.XDG_CURRENT_DESKTOP?.includes("GNOME") ||
+                    process.env.DESKTOP_SESSION?.includes("gnome")
+                ) {
+                    initGnomeSearchProvider(searchRoon, playItem);
+                }
             },
             onCoreUnpaired: (_core: any) => {
                 // Clear MPRIS metadata when unpaired

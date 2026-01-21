@@ -65,7 +65,7 @@ async function doSearch(terms: string[]): Promise<string[]> {
                 // searchResultsCache.clear();
 
                 const ids: string[] = [];
-                for (const result of results.slice(0, 10)) {
+                for (const result of results.slice(0, 5)) {
                     const id = `roon_${result.item_key}`;
                     searchResultsCache.set(id, result);
                     ids.push(id);

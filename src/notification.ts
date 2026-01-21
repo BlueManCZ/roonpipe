@@ -65,6 +65,7 @@ export async function showTrackNotification(zone: any, core: any) {
         const args = [
             "--app-name=Roon",
             "--icon=audio-x-generic",
+            "--replace-id=1",
             "--hint=int:transient:1",
             ...(artworkPath ? [`--hint=string:image-path:${artworkPath}`] : []),
             "--expire-time=5000",

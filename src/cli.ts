@@ -104,9 +104,9 @@ async function selectAction(): Promise<PlayAction | null> {
         const action = await select<PlayAction | "back">({
             message: "What do you want to do?",
             choices: [
-                { name: "▶️  Play now", value: "playNow" as PlayAction },
-                { name: "📋  Add to queue", value: "queue" as PlayAction },
-                { name: "⏭️  Play next", value: "addNext" as PlayAction },
+                { name: "▶️ Play now", value: "playNow" as PlayAction },
+                { name: "📋 Add to queue", value: "queue" as PlayAction },
+                { name: "⏭️ Play next", value: "addNext" as PlayAction },
                 new Separator(),
                 { name: "← Back", value: "back" },
             ],

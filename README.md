@@ -58,17 +58,20 @@ git clone https://github.com/BlueManCZ/roonpipe.git
 cd roonpipe
 pnpm install
 pnpm build
+pnpm start -- --install-gnome # Optional: install GNOME search provider
 ```
 
 ## GNOME Search Provider
 
-To enable searching for tracks directly from the GNOME overview or search bar, install the search provider (requires sudo):
+To enable searching for tracks directly from the GNOME overview or search bar, install the search provider:
 
 ```bash
-sudo ./scripts/install-gnome-search-provider.sh
+sudo roonpipe --install-gnome
 ```
 
-This will copy the necessary files to system directories and restart the GNOME shell. After installation, you can search for track names in the GNOME search to see RoonPipe results.
+This will copy the necessary files to system directories. After installation, you can search for track names in the GNOME search to see RoonPipe results.
+
+If you see a warning when starting the daemon, run the above command to install it.
 
 ## Usage
 

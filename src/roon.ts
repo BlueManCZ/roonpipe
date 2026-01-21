@@ -23,17 +23,13 @@ export const parseNowPlaying = (nowPlaying: any) => {
     const title = nowPlaying.three_line?.line1 || "Unknown Track";
 
     // Split artists by "/" separator and select first (Roon provides multiple artists in one string)
-    const artists: string[] = nowPlaying.three_line?.line2
+    const artists = nowPlaying.three_line?.line2
         ? [nowPlaying.three_line.line2.split(" / ").map((a: string) => a.trim())[0]]
         : ["Unknown Artist"]; // TODO: Let user choose format
 
     const album = nowPlaying.three_line?.line3 || "";
 
-    return {
-        title,
-        artists,
-        album,
-    };
+    return { title, artists, album };
 };
 
 export function initRoon(callbacks: RoonCallbacks) {
@@ -90,10 +86,7 @@ export function initRoon(callbacks: RoonCallbacks) {
         },
     });
 
-    roon.init_services({
-        required_services: [RoonApiBrowse, RoonApiImage, RoonApiTransport],
-    });
-
+    roon.init_services({ required_services: [RoonApiBrowse, RoonApiImage, RoonApiTransport] });
     roon.start_discovery();
 }
 
@@ -106,110 +99,71 @@ export interface SearchResult {
     sessionKey: string;
 }
 
-export function searchRoon(query: string): Promise<SearchResult[]> {
+function browsePromise(browse: any, opts: any): Promise<any> {
     return new Promise((resolve, reject) => {
-        if (!coreInstance) {
-            reject("Roon Core not connected");
-            return;
-        }
-
-        if (!zone) {
-            reject("No active zone");
-            return;
-        }
-
-        const browse = coreInstance.services.RoonApiBrowse;
-        const sessionKey = `search_${Date.now()}`;
-
-        const opts = {
-            hierarchy: "search",
-            input: query,
-            multi_session_key: sessionKey,
-            zone_or_output_id: zone.zone_id,
-        };
-
         browse.browse(opts, (error: any, result: any) => {
-            if (error) {
-                reject(error);
-                return;
-            }
-
-            browse.load(
-                {
-                    ...opts,
-                    offset: 0,
-                    count: result.list.count,
-                },
-                (loadError: any, loadResult: any) => {
-                    if (loadError) {
-                        reject(loadError);
-                        return;
-                    }
-
-                    const tracksCategory = loadResult.items?.find(
-                        (item: any) => item.title === "Tracks",
-                    );
-
-                    if (!tracksCategory) {
-                        // No tracks category found - return an empty array
-                        resolve([]);
-                        return;
-                    }
-
-                    browse.browse(
-                        {
-                            ...opts,
-                            item_key: tracksCategory.item_key,
-                        },
-                        (browseError: any, browseResult: any) => {
-                            if (browseError) {
-                                reject(browseError);
-                                return;
-                            }
-
-                            browse.load(
-                                {
-                                    ...opts,
-                                    item_key: tracksCategory.item_key,
-                                    offset: 0,
-                                    count: Math.min(browseResult.list.count, 50),
-                                },
-                                async (tracksError: any, tracksResult: any) => {
-                                    if (tracksError) {
-                                        reject(tracksError);
-                                        return;
-                                    }
-
-                                    // Cache all images in parallel
-                                    const imageKeys =
-                                        tracksResult.items
-                                            ?.map((item: any) => item.image_key)
-                                            .filter(Boolean) || [];
-
-                                    const imageApi = coreInstance.services.RoonApiImage;
-                                    const cachedImages = await cacheImages(imageApi, imageKeys);
-
-                                    const items: SearchResult[] =
-                                        tracksResult.items?.map((item: any) => ({
-                                            title: item.title || "Unknown Track",
-                                            subtitle: item.subtitle
-                                                ? item.subtitle.split(", ")[0]
-                                                : "Unknown Artist", // TODO: Let user choose format
-                                            item_key: item.item_key,
-                                            image: cachedImages.get(item.image_key) || null,
-                                            hint: item.hint,
-                                            sessionKey: sessionKey,
-                                        })) || [];
-
-                                    resolve(items);
-                                },
-                            );
-                        },
-                    );
-                },
-            );
+            if (error) reject(error);
+            else resolve(result);
         });
     });
+}
+
+function loadPromise(browse: any, opts: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+        browse.load(opts, (error: any, result: any) => {
+            if (error) reject(error);
+            else resolve(result);
+        });
+    });
+}
+
+export async function searchRoon(query: string): Promise<SearchResult[]> {
+    if (!coreInstance) throw new Error("Roon Core not connected");
+    if (!zone) throw new Error("No active zone");
+
+    const browse = coreInstance.services.RoonApiBrowse;
+    const sessionKey = `search_${Date.now()}`;
+    const baseOpts = {
+        hierarchy: "search",
+        input: query,
+        multi_session_key: sessionKey,
+        zone_or_output_id: zone.zone_id,
+    };
+
+    const result = await browsePromise(browse, baseOpts);
+    const loadResult = await loadPromise(browse, {
+        ...baseOpts,
+        offset: 0,
+        count: result.list.count,
+    });
+
+    const tracksCategory = loadResult.items?.find((item: any) => item.title === "Tracks");
+    if (!tracksCategory) return [];
+
+    const browseResult = await browsePromise(browse, {
+        ...baseOpts,
+        item_key: tracksCategory.item_key,
+    });
+    const tracksResult = await loadPromise(browse, {
+        ...baseOpts,
+        item_key: tracksCategory.item_key,
+        offset: 0,
+        count: Math.min(browseResult.list.count, 50),
+    });
+
+    const imageKeys = tracksResult.items?.map((item: any) => item.image_key).filter(Boolean) || [];
+    const cachedImages = await cacheImages(coreInstance.services.RoonApiImage, imageKeys);
+
+    return (
+        tracksResult.items?.map((item: any) => ({
+            title: item.title || "Unknown Track",
+            subtitle: item.subtitle ? item.subtitle.split(", ")[0] : "Unknown Artist", // TODO: Let user choose format
+            item_key: item.item_key,
+            image: cachedImages.get(item.image_key) || null,
+            hint: item.hint,
+            sessionKey,
+        })) || []
+    );
 }
 
 export type PlayAction = "play" | "playNow" | "queue" | "addNext";
@@ -220,16 +174,9 @@ const ACTION_TITLES: Record<Exclude<PlayAction, "playNow">, string[]> = {
     addNext: ["Play From Here", "Add Next"],
 };
 
-/**
- * Skip to the next track in the queue
- */
-function skipToNext(): Promise<void> {
+function controlPromise(transport: any, zone: any, command: string): Promise<void> {
     return new Promise((resolve, reject) => {
-        if (!coreInstance || !zone) {
-            reject("Not connected");
-            return;
-        }
-        coreInstance.services.RoonApiTransport.control(zone, "next", (err: any) => {
+        transport.control(zone, command, (err: any) => {
             if (err) reject(err);
             else resolve();
         });
@@ -240,8 +187,7 @@ function skipToNext(): Promise<void> {
  * Check if there's an active queue (something is playing or paused)
  */
 function hasActiveQueue(): boolean {
-    if (!zone) return false;
-    return zone.now_playing && (zone.state === "playing" || zone.state === "paused");
+    return !!zone?.now_playing && (zone.state === "playing" || zone.state === "paused");
 }
 
 export async function playItem(
@@ -254,123 +200,77 @@ export async function playItem(
         if (hasActiveQueue()) {
             // If the queue exists: add next + skip to it
             await playItemInternal(itemKey, sessionKey, "addNext");
-            await skipToNext();
+            await controlPromise(coreInstance.services.RoonApiTransport, zone, "next");
         } else {
             // If no queue: use the regular "Play now" action
             await playItemInternal(itemKey, sessionKey, "play");
         }
         return;
     }
-
     return playItemInternal(itemKey, sessionKey, action);
 }
 
-function playItemInternal(
+async function playItemInternal(
     itemKey: string,
     sessionKey: string,
     action: Exclude<PlayAction, "playNow">,
 ): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (!coreInstance) {
-            reject("Roon Core not connected");
-            return;
-        }
+    if (!coreInstance) throw new Error("Roon Core not connected");
+    if (!zone) throw new Error("No active zone");
 
-        if (!zone) {
-            reject("No active zone");
-            return;
-        }
+    const browse = coreInstance.services.RoonApiBrowse;
+    const actionTitles = ACTION_TITLES[action];
 
-        const browse = coreInstance.services.RoonApiBrowse;
-        const actionTitles = ACTION_TITLES[action];
+    async function findAndExecute(currentItemKey: string, depth = 0): Promise<void> {
+        if (depth > 5) throw new Error("Too many levels, cannot find action");
 
-        function loadUntilAction(currentItemKey: string, depth: number = 0) {
-            if (depth > 5) {
-                reject("Too many levels, cannot find action");
-                return;
+        const browseResult = await browsePromise(browse, {
+            hierarchy: "search",
+            multi_session_key: sessionKey,
+            item_key: currentItemKey,
+            zone_or_output_id: zone.zone_id,
+        });
+
+        const loadResult = await loadPromise(browse, {
+            hierarchy: "search",
+            multi_session_key: sessionKey,
+            item_key: currentItemKey,
+            offset: 0,
+            count: browseResult.list?.count || 10,
+            zone_or_output_id: zone.zone_id,
+        });
+
+        if (!loadResult.items?.length) throw new Error("No items found");
+
+        const targetAction = loadResult.items.find(
+            (item: any) =>
+                item.hint === "action" && actionTitles.some((title) => item.title === title),
+        );
+
+        if (targetAction) {
+            await browsePromise(browse, {
+                hierarchy: "search",
+                multi_session_key: sessionKey,
+                item_key: targetAction.item_key,
+                zone_or_output_id: zone.zone_id,
+            });
+            console.log(`Successfully executed action: ${action}`);
+        } else {
+            const actionList = loadResult.items.find((item: any) => item.hint === "action_list");
+            if (actionList) {
+                await findAndExecute(actionList.item_key, depth + 1);
+            } else {
+                throw new Error(`Could not find ${action} action or next level`);
             }
-
-            browse.browse(
-                {
-                    hierarchy: "search",
-                    multi_session_key: sessionKey,
-                    item_key: currentItemKey,
-                    zone_or_output_id: zone.zone_id,
-                },
-                (browseError: any, browseResult: any) => {
-                    if (browseError) {
-                        reject(browseError);
-                        return;
-                    }
-
-                    browse.load(
-                        {
-                            hierarchy: "search",
-                            multi_session_key: sessionKey,
-                            item_key: currentItemKey,
-                            offset: 0,
-                            count: browseResult.list?.count || 10,
-                            zone_or_output_id: zone.zone_id,
-                        },
-                        (loadError: any, loadResult: any) => {
-                            if (loadError) {
-                                reject(loadError);
-                                return;
-                            }
-
-                            if (!loadResult.items || loadResult.items.length === 0) {
-                                reject("No items found");
-                                return;
-                            }
-
-                            const targetAction = loadResult.items.find(
-                                (item: any) =>
-                                    item.hint === "action" &&
-                                    actionTitles.some((title) => item.title === title),
-                            );
-
-                            if (targetAction) {
-                                browse.browse(
-                                    {
-                                        hierarchy: "search",
-                                        multi_session_key: sessionKey,
-                                        item_key: targetAction.item_key,
-                                        zone_or_output_id: zone.zone_id,
-                                    },
-                                    (playError: any) => {
-                                        if (playError) {
-                                            reject(playError);
-                                        } else {
-                                            console.log(`Successfully executed action: ${action}`);
-                                            resolve();
-                                        }
-                                    },
-                                );
-                            } else {
-                                const actionList = loadResult.items.find(
-                                    (item: any) => item.hint === "action_list",
-                                );
-
-                                if (actionList) {
-                                    loadUntilAction(actionList.item_key, depth + 1);
-                                } else {
-                                    reject(`Could not find ${action} action or next level`);
-                                }
-                            }
-                        },
-                    );
-                },
-            );
         }
+    }
 
-        loadUntilAction(itemKey);
-    });
+    await findAndExecute(itemKey);
 }
 
 export function getZone() {
     return zone;
 }
-
 export function getCore() {
     return coreInstance;
 }

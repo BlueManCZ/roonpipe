@@ -28,11 +28,8 @@ function sendCommand(command: object): Promise<any> {
         client.on("end", () => {
             try {
                 const response = JSON.parse(data);
-                if (response.error) {
-                    reject(response.error);
-                } else {
-                    resolve(response);
-                }
+                if (response.error) reject(response.error);
+                else resolve(response);
             } catch {
                 reject("Failed to parse response");
             }
@@ -60,10 +57,7 @@ async function searchQuery(): Promise<string> {
 
 async function search(): Promise<SearchResult[]> {
     const query = await searchQuery();
-
-    if (!query.trim()) {
-        return [];
-    }
+    if (!query.trim()) return [];
 
     console.log(`\nSearching for "${query}"...\n`);
 
@@ -77,7 +71,7 @@ async function search(): Promise<SearchResult[]> {
 }
 
 async function selectTrack(results: SearchResult[]): Promise<SearchResult | null> {
-    const choices: Array<{ name: string; value: number } | Separator> = [
+    const choices = [
         ...results.map((result, index) => ({
             name: `${result.title} ${result.subtitle ? `· ${result.subtitle}` : ""}`,
             value: index,
@@ -95,14 +89,9 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
             theme: { prefix: "" },
         });
 
-        if (selection === -2) {
-            return null;
-        }
-
-        if (selection === -1) {
+        if (selection === -2) return null;
+        if (selection === -1)
             return { item_key: "", sessionKey: "", title: "", subtitle: "__search__" };
-        }
-
         return results[selection];
     } catch {
         // User pressed Ctrl+C
@@ -131,14 +120,14 @@ async function selectAction(): Promise<PlayAction | null> {
 }
 
 async function playTrack(track: SearchResult, action: PlayAction): Promise<void> {
-    const actionLabels: Record<PlayAction, string> = {
+    const labels = {
         playNow: "▶️ Playing",
         queue: "📋 Added to queue",
         addNext: "⏭️ Playing next",
     };
 
     console.log(
-        `\n${actionLabels[action]}: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`,
+        `\n${labels[action]}: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`,
     );
 
     try {
@@ -158,12 +147,9 @@ export async function startCLI() {
     console.log("\n🎵 RoonPipe Interactive Search");
     console.log("==============================\n");
 
-    let running = true;
-
-    while (running) {
+    while (true) {
         const results = await search();
-
-        if (results.length === 0) {
+        if (!results.length) {
             console.log("❌ No tracks found.\n");
             continue;
         }
@@ -171,23 +157,15 @@ export async function startCLI() {
         console.log(`Found ${results.length} track(s):\n`);
 
         const selected = await selectTrack(results);
-
-        if (selected === null) {
+        if (!selected) {
             console.log("\nGoodbye! 👋\n");
-            running = false;
-            continue;
+            break;
         }
 
-        if (selected.subtitle === "__search__") {
-            continue;
-        }
+        if (selected.subtitle === "__search__") continue;
 
         const action = await selectAction();
-
-        if (action === null) {
-            // User chose "Back", continue to track selection
-            continue;
-        }
+        if (!action) continue;
 
         await playTrack(selected, action);
     }

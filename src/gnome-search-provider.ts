@@ -1,4 +1,3 @@
-// @ts-nocheck
 import dbus from "dbus-next";
 
 import type { PlayAction } from "./roon";
@@ -12,77 +11,52 @@ const searchResultsCache = new Map<string, any>();
 // Cache for query results to avoid repeated API calls
 const queryCache = new Map<string, string[]>();
 
-// Debounce variables
 let debounceTimeout: NodeJS.Timeout | null = null;
-let currentQuery = "";
-let currentPromise: Promise<string[]> | null = null;
-
 let searchFn: ((query: string) => Promise<any[]>) | null = null;
-let playFn: ((itemKey: string, sessionKey: string, action: string) => Promise<void>) | null = null;
+let playFn: ((itemKey: string, sessionKey: string, action?: PlayAction) => Promise<void>) | null =
+    null;
+
+function debounce<T extends any[]>(func: (...args: T) => void, delay: number) {
+    return (...args: T) => {
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => func(...args), delay);
+    };
+}
+
+const debouncedSearch = debounce(async (query: string, resolve: (value: string[]) => void) => {
+    const cached = queryCache.get(query);
+    if (cached) {
+        resolve(cached);
+        return;
+    }
+
+    try {
+        if (!searchFn) {
+            resolve([]);
+            return;
+        }
+        const results = await searchFn(query);
+        const ids: string[] = [];
+        for (const result of results.slice(0, 5)) {
+            const id = `roon_${result.item_key}`;
+            searchResultsCache.set(id, result);
+            ids.push(id);
+        }
+        queryCache.set(query, ids);
+        resolve(ids);
+    } catch (error) {
+        console.error("Search failed:", error);
+        resolve([]);
+    }
+}, 300);
 
 async function doSearch(terms: string[]): Promise<string[]> {
-    console.log("Searching for terms:", terms);
-    if (!searchFn) {
-        return [];
-    }
-
     const query = terms.join(" ");
-    if (query.length < 4) {
-        return [];
-    }
+    if (query.length < 4 || !searchFn) return [];
 
-    // If same query, return current promise
-    if (query === currentQuery && currentPromise) {
-        return currentPromise;
-    }
-
-    // Cancel previous debounce
-    if (debounceTimeout) {
-        clearTimeout(debounceTimeout);
-    }
-
-    currentQuery = query;
-
-    currentPromise = new Promise((resolve) => {
-        debounceTimeout = setTimeout(async () => {
-            // Check if still the current query
-            if (query !== currentQuery) {
-                resolve([]);
-                return;
-            }
-
-            // Check cache
-            if (queryCache.has(query)) {
-                resolve(queryCache.get(query));
-                return;
-            }
-
-            try {
-                console.log("Searching for terms:", terms);
-                const results = await searchFn(query);
-
-                // Store new results (don't clear to keep old ones for clicks)
-                // searchResultsCache.clear();
-
-                const ids: string[] = [];
-                for (const result of results.slice(0, 5)) {
-                    const id = `roon_${result.item_key}`;
-                    searchResultsCache.set(id, result);
-                    ids.push(id);
-                }
-
-                // Cache the ids for this query
-                queryCache.set(query, ids);
-
-                resolve(ids);
-            } catch (error) {
-                console.error("Search failed:", error);
-                resolve([]);
-            }
-        }, 300);
+    return new Promise((resolve) => {
+        debouncedSearch(query, resolve);
     });
-
-    return currentPromise;
 }
 
 // Define the D-Bus interface
@@ -93,22 +67,22 @@ class RoonSearchProvider extends Interface {
         super("org.gnome.Shell.SearchProvider2");
     }
 
-    async GetInitialResultSet(terms) {
+    async GetInitialResultSet(terms: string[]) {
         return doSearch(terms);
     }
 
-    async GetSubsearchResultSet(_previousResults, terms) {
+    async GetSubsearchResultSet(_previousResults: string[], terms: string[]) {
         return doSearch(terms);
     }
 
-    async GetResultMetas(identifiers) {
+    async GetResultMetas(identifiers: string[]) {
         const Variant = dbus.Variant;
-        const metas = [];
+        const metas: any[] = [];
 
         for (const id of identifiers) {
             const result = searchResultsCache.get(id);
             if (result) {
-                const meta = {
+                const meta: any = {
                     id: new Variant("s", id),
                     name: new Variant("s", result.title),
                     description: new Variant("s", result.subtitle),
@@ -125,10 +99,8 @@ class RoonSearchProvider extends Interface {
         return metas;
     }
 
-    async ActivateResult(identifier, _terms, _timestamp) {
-        console.log("ActivateResult called for:", identifier);
+    async ActivateResult(identifier: string, _terms: string[], _timestamp: number) {
         const result = searchResultsCache.get(identifier);
-        console.log("Result to activate:", result);
         if (result && playFn) {
             try {
                 await playFn(result.item_key, result.sessionKey, "playNow");
@@ -139,7 +111,7 @@ class RoonSearchProvider extends Interface {
         }
     }
 
-    async LaunchSearch(_terms, _timestamp) {
+    async LaunchSearch(_terms: string[], _timestamp: number) {
         console.log("LaunchSearch called - not implemented");
     }
 }

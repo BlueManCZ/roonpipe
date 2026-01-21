@@ -4,81 +4,76 @@ import { cacheImage } from "./image-cache";
 import { parseNowPlaying } from "./roon";
 
 let lastNotifiedTrack: string | null = null;
-let notificationTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastState: string | null = null;
 let isFirstUpdate = true;
-let lastPlaybackState: string | null = null;
 
 /**
  * Show a desktop notification for the current track.
  * - Skips notification on startup if a track is already playing
  * - Shows notification when the playback starts
- * - Shows notification when the track changes
  */
 export async function showTrackNotification(zone: any, core: any) {
     if (!zone?.now_playing) return;
 
-    const np = zone.now_playing;
-    const trackId = np.image_key || "";
-    const currentState = zone.state;
+    const trackId = zone.now_playing.image_key || "";
+    const isPlaying = zone.state === "playing";
 
-    // Skip notification on startup if the track is already playing
+    // Skip notification on startup if already playing
     if (isFirstUpdate) {
         isFirstUpdate = false;
         lastNotifiedTrack = trackId;
-        lastPlaybackState = currentState;
+        lastState = zone.state;
         return;
     }
 
+    const prevState = lastState;
+    // Notify only when playback actually starts (transition into "playing").
+    const playbackStarted = isPlaying && prevState !== "playing";
     const trackChanged = trackId !== lastNotifiedTrack;
-    const playbackStarted = currentState === "playing" && lastPlaybackState !== "playing";
 
-    lastPlaybackState = currentState;
+    // Notify when playback started OR when track changed while already playing
+    const shouldNotify = playbackStarted || (trackChanged && isPlaying);
 
-    // Show notification on track change or playback start
-    if (!trackChanged && !playbackStarted) return;
-
-    // Cancel any pending notification
-    if (notificationTimeout) {
-        clearTimeout(notificationTimeout);
+    if (!shouldNotify) {
+        // nothing to notify, but update lastState for transition tracking
+        lastState = zone.state;
+        return;
     }
 
-    // Debounce to prevent duplicate notifications
-    notificationTimeout = setTimeout(async () => {
-        // Skip if already notified for this track
-        if (trackId === lastNotifiedTrack) {
-            notificationTimeout = null;
-            return;
-        }
+    try {
+        // Build now-playing data once
+        const data = parseNowPlaying(zone.now_playing);
 
-        lastNotifiedTrack = trackId;
-
-        const data = parseNowPlaying(np);
-
-        // Cache the artwork
+        // Cache artwork if available
         let artworkPath: string | null = null;
-        if (np.image_key && core?.services?.RoonApiImage) {
-            artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
+        if (zone.now_playing.image_key && core?.services?.RoonApiImage) {
+            try {
+                artworkPath = await cacheImage(
+                    core.services.RoonApiImage,
+                    zone.now_playing.image_key,
+                );
+            } catch (_err) {
+                artworkPath = null;
+            }
         }
-
-        console.log("Showing notification for track:", data.title);
 
         const args = [
-            "--app-name=Roon",
-            "--icon=audio-x-generic",
-            "--replace-id=1",
-            "--hint=int:transient:1",
+            `--app-name=Roon`,
+            `--icon=audio-x-generic`,
+            `--replace-id=1`,
+            `--hint=int:transient:1`,
             ...(artworkPath ? [`--hint=string:image-path:${artworkPath}`] : []),
-            "--expire-time=5000",
+            `--expire-time=5000`,
             data.title,
-            `${data.artists.join(", ")}\n${data.album}`,
+            `${data.artists.join(", ")} • ${data.album}`,
         ];
 
-        try {
-            execSync(`notify-send ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`);
-        } catch (error) {
-            console.error("Failed to show notification:", error);
-        }
+        console.log(`Showing notification for track: ${data.title}`);
+        execSync(`notify-send ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`);
 
-        notificationTimeout = null;
-    }, 150);
+        lastNotifiedTrack = trackId;
+        lastState = zone.state;
+    } catch (err) {
+        console.error("Failed to show notification:", err);
+    }
 }

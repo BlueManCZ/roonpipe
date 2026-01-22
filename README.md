@@ -10,10 +10,10 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 - **MPRIS Integration** — Control Roon playback using standard Linux media keys, `playerctl`, or any MPRIS-compatible application
 - **Desktop Notifications** — Get notified when tracks change, complete with album artwork
 - **Playback Controls** — Play, pause, stop, skip, seek, volume, shuffle, and loop
-- **Track Search** — Search your entire Roon library (including TIDAL/Qobuz) via CLI or programmatically
-- **GNOME Search Integration** — Search and play tracks directly from the GNOME overview or search bar
+- **Library Search** — Search your entire Roon library (tracks, albums, and artists from local and streaming services)
+- **GNOME Search Integration** — Search and play music directly from the GNOME overview or search bar
 - **Unix Socket API** — Integrate with other applications using a simple JSON-based IPC protocol
-- **Interactive CLI** — Search and play tracks directly from your terminal with arrow key navigation
+- **Interactive CLI** — Search and play music from your terminal with arrow key navigation and action menus
 
 ## CLI Example
 
@@ -21,19 +21,28 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 🎵 RoonPipe Interactive Search
 ==============================
 
-🔍 Search for a track: pink floyd
+🔍 Search: pink floyd
 
 Searching for "pink floyd"...
 
-Found 50 track(s):
+Found 50 result(s):
 
-❯ Comfortably Numb · Pink Floyd · The Wall
-  Wish You Were Here · Pink Floyd · Wish You Were Here
-  Time · Pink Floyd · The Dark Side of the Moon
-  Another Brick in the Wall, Pt. 2 · Pink Floyd · The Wall
+❯ 🎤 Pink Floyd
+  💿 The Wall · Pink Floyd
+  💿 Wish You Were Here · Pink Floyd
+  🎵 Comfortably Numb · Pink Floyd
+  🎵 Wish You Were Here · Pink Floyd
+  🎵 Time · Pink Floyd
   ────────────────────────────────────────
   🔍 New search
   ❌ Quit
+
+? Select an item to play: 💿 The Wall · Pink Floyd
+? What do you want to do?
+❯ ▶️  Play Now
+  ⏭️  Add Next
+  📋 Queue
+  📻 Start Radio
 ```
 
 ## Requirements
@@ -106,9 +115,10 @@ pnpm run cli
 ```
 
 Features:
+- Search for tracks, albums, and artists (results ordered by type)
 - Use arrow keys to navigate search results
-- Press Enter to select a track
-- Choose an action: Play now, Add to queue, or Play next
+- Press Enter to select an item
+- Choose from available Roon actions (Play Now, Queue, Start Radio, etc.)
 - Press Ctrl+C to exit
 
 ### Development Mode
@@ -153,49 +163,95 @@ echo '{"command":"search","query":"beatles"}' | nc -U /tmp/roonpipe.sock
 Response:
 ```json
 {
+  "error": null,
   "results": [
     {
-      "title": "Let It Be",
-      "subtitle": "The Beatles · Let It Be",
-      "item_key": "10:0",
+      "title": "The Beatles",
+      "subtitle": "",
+      "item_key": "100:0",
       "image": "/home/user/.cache/roonpipe/images/abc123.jpg",
-      "sessionKey": "search_1234567890"
+      "hint": "list",
+      "sessionKey": "search_1234567890",
+      "type": "artist",
+      "category_key": "100:1",
+      "index": 0,
+      "actions": [
+        {"title": "Play Now"},
+        {"title": "Shuffle"},
+        {"title": "Queue"}
+      ]
+    },
+    {
+      "title": "Abbey Road",
+      "subtitle": "The Beatles",
+      "item_key": "101:0",
+      "image": "/home/user/.cache/roonpipe/images/def456.jpg",
+      "hint": "list",
+      "sessionKey": "search_1234567890",
+      "type": "album",
+      "category_key": "100:2",
+      "index": 0,
+      "actions": [
+        {"title": "Play Now"},
+        {"title": "Add Next"},
+        {"title": "Queue"},
+        {"title": "Start Radio"}
+      ]
+    },
+    {
+      "title": "Let It Be",
+      "subtitle": "The Beatles",
+      "item_key": "102:0",
+      "image": "/home/user/.cache/roonpipe/images/ghi789.jpg",
+      "hint": "action_list",
+      "sessionKey": "search_1234567890",
+      "type": "track",
+      "category_key": "100:3",
+      "index": 0,
+      "actions": [
+        {"title": "Play Now"},
+        {"title": "Add Next"},
+        {"title": "Queue"},
+        {"title": "Start Radio"}
+      ]
     }
   ]
 }
 ```
 
+**Search Result Fields:**
+- `type` — Item type: `"artist"`, `"album"`, or `"track"`
+- `actions` — List of available Roon actions for this item (titles only)
+- `category_key` — Key to the category (Artists/Albums/Tracks) for navigation
+- `index` — Position within the category
+- `sessionKey` — Search session identifier
+- `item_key` — Item identifier (ephemeral, valid only within session context)
+
 ### Play
 
-Play a track immediately (preserves current queue):
+To play an item, you need the search result fields and the action title:
 
 ```bash
-echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"playNow"}' | nc -U /tmp/roonpipe.sock
+echo '{"command":"play","item_key":"101:0","session_key":"search_1234567890","category_key":"100:2","item_index":0,"action_title":"Play Now"}' | nc -U /tmp/roonpipe.sock
 ```
 
-Add to the queue:
-
-```bash
-echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"queue"}' | nc -U /tmp/roonpipe.sock
+Response:
+```json
+{
+  "error": null,
+  "success": true
+}
 ```
 
-Play next (add after current track):
+**Play Command Parameters:**
+- `item_key` — Item key from search results
+- `session_key` — Session key from search results
+- `category_key` — Category key from search results
+- `item_index` — Index from search results
+- `action_title` — Title of the action to execute (e.g., "Play Now", "Queue", "Add Next")
 
-```bash
-echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"addNext"}' | nc -U /tmp/roonpipe.sock
-```
-
-Replace the queue and play immediately:
-
-```bash
-echo '{"command":"play","item_key":"10:0","session_key":"search_1234567890","action":"play"}' | nc -U /tmp/roonpipe.sock
-```
-
-Available actions:
-- `play` (default) — Replace queue and play immediately
-- `playNow` — Play immediately while preserving the queue (adds next and skips)
-- `queue` — Add to the end of the queue
-- `addNext` — Add after the current track
+**How It Works:**
+The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then discovers available actions and executes the one matching `action_title`. This approach works around Roon's ephemeral browse keys.
 
 ## Project Structure
 

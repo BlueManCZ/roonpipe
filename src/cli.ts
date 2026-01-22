@@ -2,13 +2,19 @@ import net from "node:net";
 import readline from "node:readline";
 import { Separator, select } from "@inquirer/prompts";
 
-type PlayAction = "playNow" | "queue" | "addNext";
+interface RoonAction {
+    title: string;
+}
 
 interface SearchResult {
     title: string;
     subtitle: string;
     item_key: string;
     sessionKey: string;
+    type: "track" | "album" | "artist";
+    category_key: string;
+    index: number;
+    actions: RoonAction[];
 }
 
 const SOCKET_PATH = "/tmp/roonpipe.sock";
@@ -48,7 +54,7 @@ async function searchQuery(): Promise<string> {
     });
 
     return new Promise((resolve) => {
-        rl.question("🔍 Search for a track: ", (answer) => {
+        rl.question("🔍 Search: ", (answer) => {
             rl.close();
             resolve(answer);
         });
@@ -71,9 +77,10 @@ async function search(): Promise<SearchResult[]> {
 }
 
 async function selectTrack(results: SearchResult[]): Promise<SearchResult | null> {
+    const typeIcons = { track: "🎵", album: "💿", artist: "🎤" };
     const choices = [
         ...results.map((result, index) => ({
-            name: `${result.title} ${result.subtitle ? `· ${result.subtitle}` : ""}`,
+            name: `${typeIcons[result.type]} ${result.title} ${result.subtitle ? `· ${result.subtitle}` : ""}`,
             value: index,
         })),
         new Separator(),
@@ -83,7 +90,7 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
 
     try {
         const selection = await select<number>({
-            message: "Select a track to play:",
+            message: "Select an item to play:",
             choices,
             pageSize: 15,
             theme: { prefix: "" },
@@ -91,7 +98,16 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
 
         if (selection === -2) return null;
         if (selection === -1)
-            return { item_key: "", sessionKey: "", title: "", subtitle: "__search__" };
+            return {
+                item_key: "",
+                sessionKey: "",
+                title: "",
+                subtitle: "__search__",
+                type: "track",
+                category_key: "",
+                index: 0,
+                actions: [],
+            };
         return results[selection];
     } catch {
         // User pressed Ctrl+C
@@ -99,17 +115,27 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
     }
 }
 
-async function selectAction(): Promise<PlayAction | null> {
+async function selectAction(availableActions: RoonAction[]): Promise<RoonAction | null> {
     try {
-        const action = await select<PlayAction | "back">({
+        const actionIcons: Record<string, string> = {
+            "Play Now": "▶️",
+            "Play": "▶️",
+            "Shuffle": "🔀",
+            "Queue": "📋",
+            "Add to Queue": "📋",
+            "Add Next": "⏭️",
+            "Play From Here": "⏭️",
+            "Start Radio": "📻",
+        };
+
+        const choices = availableActions.map((action) => ({
+            name: `${actionIcons[action.title] || "•"} ${action.title}`,
+            value: action,
+        }));
+
+        const action = await select<RoonAction | "back">({
             message: "What do you want to do?",
-            choices: [
-                { name: "▶️ Play now", value: "playNow" as PlayAction },
-                { name: "📋 Add to queue", value: "queue" as PlayAction },
-                { name: "⏭️ Play next", value: "addNext" as PlayAction },
-                new Separator(),
-                { name: "← Back", value: "back" },
-            ],
+            choices: [...choices, new Separator(), { name: "← Back", value: "back" }],
             theme: { prefix: "" },
         });
 
@@ -119,15 +145,9 @@ async function selectAction(): Promise<PlayAction | null> {
     }
 }
 
-async function playTrack(track: SearchResult, action: PlayAction): Promise<void> {
-    const labels = {
-        playNow: "▶️ Playing",
-        queue: "📋 Added to queue",
-        addNext: "⏭️ Playing next",
-    };
-
+async function playTrack(track: SearchResult, action: RoonAction): Promise<void> {
     console.log(
-        `\n${labels[action]}: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`,
+        `\n${action.title}: ${track.title}${track.subtitle ? ` · ${track.subtitle}` : ""}\n`,
     );
 
     try {
@@ -135,7 +155,9 @@ async function playTrack(track: SearchResult, action: PlayAction): Promise<void>
             command: "play",
             item_key: track.item_key,
             session_key: track.sessionKey,
-            action,
+            category_key: track.category_key,
+            item_index: track.index,
+            action_title: action.title,
         });
         console.log("✅  Success!\n");
     } catch (error) {
@@ -150,11 +172,11 @@ export async function startCLI() {
     while (true) {
         const results = await search();
         if (!results.length) {
-            console.log("❌ No tracks found.\n");
+            console.log("❌ No results found.\n");
             continue;
         }
 
-        console.log(`Found ${results.length} track(s):\n`);
+        console.log(`Found ${results.length} result(s):\n`);
 
         const selected = await selectTrack(results);
         if (!selected) {
@@ -164,7 +186,13 @@ export async function startCLI() {
 
         if (selected.subtitle === "__search__") continue;
 
-        const action = await selectAction();
+        // Use actions from search result
+        if (selected.actions.length === 0) {
+            console.log("No actions available for this item.\n");
+            continue;
+        }
+
+        const action = await selectAction(selected.actions);
         if (!action) continue;
 
         await playTrack(selected, action);

@@ -10,7 +10,7 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 - **MPRIS Integration** — Control Roon playback using standard Linux media keys, `playerctl`, or any MPRIS-compatible application
 - **Desktop Notifications** — Get notified when tracks change, complete with album artwork
 - **Playback Controls** — Play, pause, stop, skip, seek, volume, shuffle, and loop
-- **Library Search** — Search your entire Roon library (tracks, albums, and artists from local and streaming services)
+- **Library Search** — Search your entire Roon library (tracks, albums, artists, playlists, and works from local and streaming services)
 - **GNOME Search Integration** — Search and play music directly from the GNOME overview or search bar
 - **Unix Socket API** — Integrate with other applications using a simple JSON-based IPC protocol
 - **Interactive CLI** — Search and play music from your terminal with arrow key navigation and action menus
@@ -115,7 +115,8 @@ pnpm run cli
 ```
 
 Features:
-- Search for tracks, albums, and artists (results ordered by type)
+- Search for tracks, albums, artists, playlists, and works
+- Results grouped and ordered by type with intuitive icons (🎵 tracks, 💿 albums, 🎤 artists, 👤 composers, 📋 playlists, 🎼 works)
 - Use arrow keys to navigate search results
 - Press Enter to select an item
 - Choose from available Roon actions (Play Now, Queue, Start Radio, etc.)
@@ -220,12 +221,14 @@ Response:
 ```
 
 **Search Result Fields:**
-- `type` — Item type: `"artist"`, `"album"`, or `"track"`
-- `actions` — List of available Roon actions for this item (titles only)
-- `category_key` — Key to the category (Artists/Albums/Tracks) for navigation
+- `title` — Item title
+- `subtitle` — Additional info (artist names are automatically parsed from Roon's internal format)
+- `item_key` — Item identifier (ephemeral, valid only within session context)
+- `type` — Item type: `"artist"`, `"album"`, `"track"`, `"composer"`, `"playlist"`, or `"work"`
+- `actions` — List of available Roon actions for this item (known actions based on type)
+- `category_key` — Key to the category for navigation
 - `index` — Position within the category
 - `sessionKey` — Search session identifier
-- `item_key` — Item identifier (ephemeral, valid only within session context)
 
 ### Play
 
@@ -251,7 +254,7 @@ Response:
 - `action_title` — Title of the action to execute (e.g., "Play Now", "Queue", "Add Next")
 
 **How It Works:**
-The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then discovers available actions and executes the one matching `action_title`. This approach works around Roon's ephemeral browse keys.
+The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then navigates through the action hierarchy to execute the action matching `action_title`. This approach works around Roon's ephemeral browse keys.
 
 ## Project Structure
 

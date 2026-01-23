@@ -11,7 +11,7 @@ interface SearchResult {
     subtitle: string;
     item_key: string;
     sessionKey: string;
-    type: "track" | "album" | "artist";
+    type: "track" | "album" | "artist" | "composer" | "playlist" | "work";
     category_key: string;
     index: number;
     actions: RoonAction[];
@@ -77,10 +77,17 @@ async function search(): Promise<SearchResult[]> {
 }
 
 async function selectTrack(results: SearchResult[]): Promise<SearchResult | null> {
-    const typeIcons = { track: "🎵", album: "💿", artist: "🎤" };
+    const typeIcons: Record<string, string> = {
+        track: "🎵",
+        album: "💿",
+        artist: "🎤",
+        playlist: "📋",
+        work: "🎼",
+        composer: "👤",
+    };
     const choices = [
         ...results.map((result, index) => ({
-            name: `${typeIcons[result.type]} ${result.title} ${result.subtitle ? `· ${result.subtitle}` : ""}`,
+            name: `${typeIcons[result.type] || "•"} ${result.title} ${result.subtitle ? `· ${result.subtitle}` : ""}`,
             value: index,
         })),
         new Separator(),

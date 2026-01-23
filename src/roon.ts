@@ -101,7 +101,7 @@ export interface SearchResult {
     image: string | null;
     hint: string;
     sessionKey: string;
-    type: "track" | "album" | "artist";
+    type: "track" | "album" | "artist" | "composer" | "playlist" | "work";
     category_key: string;
     index: number;
     actions: RoonAction[];
@@ -223,14 +223,8 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
 
     const results: SearchResult[] = [];
     const maxResultsPerCategory = 5;
-    const maxCategories = 3;
 
-    // Process limited categories from Roon's search results
-    const categoriesToProcess = Math.min(loadResult.items?.length || 0, maxCategories);
-
-    for (let categoryIndex = 0; categoryIndex < categoriesToProcess; categoryIndex++) {
-        const category = loadResult.items[categoryIndex];
-
+    for (const category of loadResult.items) {
         const browseResult = await browsePromise(browse, {
             ...baseOpts,
             item_key: category.item_key,
@@ -246,10 +240,22 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
             itemsResult.items?.map((item: any) => item.image_key).filter(Boolean) || [];
         const cachedImages = await cacheImages(coreInstance.services.RoonApiImage, imageKeys);
 
+        const knownCategories = ["artist", "album", "composer", "playlist", "track", "work"];
+
         // Infer type from category title
-        let type: "track" | "album" | "artist" = "track";
-        if (category.title.toLowerCase().includes("artist")) type = "artist";
-        else if (category.title.toLowerCase().includes("album")) type = "album";
+        if (!category.title) continue;
+        let type: "track" | "album" | "artist" | "composer" | "playlist" | "work" = "track";
+        if (
+            knownCategories.some((knownCategory) =>
+                category.title.toLowerCase().includes(knownCategory),
+            )
+        ) {
+            type = knownCategories.find((knownCategory) =>
+                category.title.toLowerCase().includes(knownCategory),
+            ) as typeof type;
+        } else {
+            type = category.title;
+        }
 
         // Discover actions for each item
         const categoryResults = [];
@@ -289,7 +295,9 @@ export async function playItem(
 
     const browse = coreInstance.services.RoonApiBrowse;
 
-    console.log(`[DEBUG] playItem: itemKey=${itemKey}, categoryKey=${categoryKey}, itemIndex=${itemIndex}, actionTitle=${actionTitle}`);
+    console.log(
+        `[DEBUG] playItem: itemKey=${itemKey}, categoryKey=${categoryKey}, itemIndex=${itemIndex}, actionTitle=${actionTitle}`,
+    );
 
     // Navigate to category
     await browsePromise(browse, {
@@ -318,7 +326,10 @@ export async function playItem(
 
     // Discover actions with fresh context
     const actions = await discoverActions(browse, actualItemKey, sessionKey, zone.zone_id);
-    console.log(`[DEBUG] Discovered ${actions.length} actions:`, actions.map(a => a.title).join(", "));
+    console.log(
+        `[DEBUG] Discovered ${actions.length} actions:`,
+        actions.map((a) => a.title).join(", "),
+    );
 
     // Find the action by title
     const targetAction = actions.find((a) => a.title === actionTitle);
@@ -368,7 +379,10 @@ export async function playItem(
                 });
                 console.log("[DEBUG] Successfully executed action");
                 return true;
-            } else if (item.hint === "action_list" || (item.hint === "list" && loadResult.items.length === 1)) {
+            } else if (
+                item.hint === "action_list" ||
+                (item.hint === "list" && loadResult.items.length === 1)
+            ) {
                 // Recurse into this item
                 const found = await findAndExecuteAction(item.item_key, newSessionKey, depth + 1);
                 if (found) return true;

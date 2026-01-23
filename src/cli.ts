@@ -119,9 +119,9 @@ async function selectAction(availableActions: RoonAction[]): Promise<RoonAction 
     try {
         const actionIcons: Record<string, string> = {
             "Play Now": "▶️",
-            "Play": "▶️",
-            "Shuffle": "🔀",
-            "Queue": "📋",
+            Play: "▶️",
+            Shuffle: "🔀",
+            Queue: "📋",
             "Add to Queue": "📋",
             "Add Next": "⏭️",
             "Play From Here": "⏭️",

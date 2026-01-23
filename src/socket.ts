@@ -6,7 +6,13 @@ let socketServer: net.Server | null = null;
 
 export interface SocketHandlers {
     search: (query: string) => Promise<any>;
-    play: (itemKey: string, sessionKey: string, categoryKey: string, itemIndex: number, actionTitle: string) => Promise<any>;
+    play: (
+        itemKey: string,
+        sessionKey: string,
+        categoryKey: string,
+        itemIndex: number,
+        actionTitle: string,
+    ) => Promise<any>;
 }
 
 /**
@@ -64,7 +70,13 @@ export function startSocketServer(handlers: SocketHandlers) {
                     client.end();
                 } else if (request.command === "play") {
                     try {
-                        await handlers.play(request.item_key, request.session_key, request.category_key, request.item_index, request.action_title);
+                        await handlers.play(
+                            request.item_key,
+                            request.session_key,
+                            request.category_key,
+                            request.item_index,
+                            request.action_title,
+                        );
                         client.write(`${JSON.stringify({ error: null, success: true })}\n`);
                     } catch (error) {
                         client.write(

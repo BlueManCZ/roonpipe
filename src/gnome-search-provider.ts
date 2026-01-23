@@ -1,7 +1,5 @@
 import dbus from "dbus-next";
 
-import type { PlayAction } from "./roon";
-
 const OBJECT_PATH = "/com/bluemancz/RoonPipe/SearchProvider";
 const BUS_NAME = "com.bluemancz.RoonPipe.SearchProvider";
 
@@ -13,8 +11,15 @@ const queryCache = new Map<string, string[]>();
 
 let debounceTimeout: NodeJS.Timeout | null = null;
 let searchFn: ((query: string) => Promise<any[]>) | null = null;
-let playFn: ((itemKey: string, sessionKey: string, action?: PlayAction) => Promise<void>) | null =
-    null;
+let playFn:
+    | ((
+          itemKey: string,
+          sessionKey: string,
+          categoryKey: string,
+          itemIndex: number,
+          actionTitle: string,
+      ) => Promise<void>)
+    | null = null;
 
 function debounce<T extends any[]>(func: (...args: T) => void, delay: number) {
     return (...args: T) => {
@@ -103,8 +108,21 @@ class RoonSearchProvider extends Interface {
         const result = searchResultsCache.get(identifier);
         if (result && playFn) {
             try {
-                await playFn(result.item_key, result.sessionKey, "playNow");
-                console.log(`Playing: ${result.title}`);
+                if (result.actions.length > 0) {
+                    // Find "Play Now" action for tracks, or "Shuffle" for artists, or first action
+                    const playAction =
+                        result.actions.find((a: any) => a.title === "Play Now") ||
+                        result.actions.find((a: any) => a.title === "Shuffle") ||
+                        result.actions[0];
+                    await playFn(
+                        result.item_key,
+                        result.sessionKey,
+                        result.category_key,
+                        result.index,
+                        playAction.title,
+                    );
+                    console.log(`Playing: ${result.title}`);
+                }
             } catch (error) {
                 console.error("Failed to play track:", error);
             }
@@ -129,7 +147,13 @@ RoonSearchProvider.configureMembers({
 
 export async function initGnomeSearchProvider(
     search: (query: string) => Promise<any[]>,
-    play: (itemKey: string, sessionKey: string, action?: PlayAction) => Promise<void>,
+    play: (
+        itemKey: string,
+        sessionKey: string,
+        categoryKey: string,
+        itemIndex: number,
+        actionTitle: string,
+    ) => Promise<void>,
 ) {
     searchFn = search;
     playFn = play;

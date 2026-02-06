@@ -13,18 +13,20 @@ let isFirstUpdate = true;
  * - Shows notification when the playback starts
  */
 export async function showTrackNotification(zone: any, core: any) {
+    // Skip notification on startup if already playing
+    if (isFirstUpdate) {
+        isFirstUpdate = false;
+        if (zone?.now_playing) {
+            lastNotifiedTrack = zone.now_playing.image_key || "";
+            lastState = zone.state;
+        }
+        return;
+    }
+
     if (!zone?.now_playing) return;
 
     const trackId = zone.now_playing.image_key || "";
     const isPlaying = zone.state === "playing";
-
-    // Skip notification on startup if already playing
-    if (isFirstUpdate) {
-        isFirstUpdate = false;
-        lastNotifiedTrack = trackId;
-        lastState = zone.state;
-        return;
-    }
 
     const prevState = lastState;
     // Notify only when playback actually starts (transition into "playing").

@@ -152,25 +152,8 @@ export async function updateMprisMetadata(zone: any, core: any) {
     const np = zone.now_playing;
     const data = parseNowPlaying(np);
 
-    // Cache the artwork and get path
-    let artworkPath: string | null = null;
-    if (np.image_key && core?.services?.RoonApiImage) {
-        artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
-    }
-
-    mpris.metadata = {
-        "mpris:trackid": mpris.objectPath(`track/${np.image_key || "0"}`),
-        "xesam:title": data.title,
-        "xesam:artist": data.artists,
-        "xesam:album": data.album,
-        "mpris:length": (np.length || 0) * 1_000_000,
-        ...(artworkPath && { "mpris:artUrl": `file://${artworkPath}` }),
-    };
-
-    // For playpause to work, we need canPlay OR canPause to be true
-    // When playing: is_pause_allowed=true, is_play_allowed=false
-    // When paused: is_pause_allowed=false, is_play_allowed=true
-    // We set both to true if either action is allowed, so playpause always works
+    // Update playback state and metadata immediately (before async image caching)
+    // so MPRIS clients see the state change without delay
     const canTogglePlayback = zone.is_play_allowed || zone.is_pause_allowed;
     mpris.canPlay = canTogglePlayback;
     mpris.canPause = canTogglePlayback;
@@ -182,6 +165,25 @@ export async function updateMprisMetadata(zone: any, core: any) {
     mpris.canSeek = zone.is_seek_allowed;
 
     updateVolume(zone);
+
+    // Cache the artwork and get path
+    let artworkPath: string | null = null;
+    if (np.image_key && core?.services?.RoonApiImage) {
+        try {
+            artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
+        } catch (_err) {
+            artworkPath = null;
+        }
+    }
+
+    mpris.metadata = {
+        "mpris:trackid": mpris.objectPath(`track/${np.image_key || "0"}`),
+        "xesam:title": data.title,
+        "xesam:artist": data.artists,
+        "xesam:album": data.album,
+        "mpris:length": (np.length || 0) * 1_000_000,
+        ...(artworkPath && { "mpris:artUrl": `file://${artworkPath}` }),
+    };
 }
 
 export function updateMprisSeek(seekPosition: number) {

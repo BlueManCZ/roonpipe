@@ -4,11 +4,6 @@ import path from "node:path";
 
 const CACHE_DIR = path.join(os.homedir(), ".cache", "roonpipe", "images");
 
-// Ensure the cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
-
 /**
  * Get the local cache path for an image
  */
@@ -49,6 +44,7 @@ export async function cacheImage(imageApi: any, imageKey: string): Promise<strin
                 }
 
                 try {
+                    fs.mkdirSync(CACHE_DIR, { recursive: true });
                     fs.writeFileSync(cachePath, imageData);
                     resolve(cachePath);
                 } catch {

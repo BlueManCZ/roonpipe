@@ -4,6 +4,7 @@ import { join as pathJoin } from "node:path";
 
 import { startCLI } from "./cli";
 import { initGnomeSearchProvider } from "./gnome-search-provider";
+import { clearOldCache } from "./image-cache";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
 import { showTrackNotification } from "./notification";
 import { getCore, getZone, initRoon, playItem, searchRoon } from "./roon";
@@ -58,6 +59,7 @@ if (cliMode) {
 
         // Daemon mode - start all services
         console.log("Starting RoonPipe Daemon");
+        clearOldCache();
 
         // Check if GNOME Search Provider is installed
         if (isRunningOnGnome()) {

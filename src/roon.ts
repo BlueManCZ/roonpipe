@@ -36,7 +36,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.7",
+        display_version: "1.0.8",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -70,6 +70,15 @@ export function initRoon(callbacks: RoonCallbacks) {
                         if (seekUpdate && zone?.now_playing) {
                             zone.now_playing.seek_position = seekUpdate.seek_position;
                             callbacks.onSeekChanged(seekUpdate.seek_position * 1_000_000);
+
+                            // Roon doesn't send zones_changed when resuming a
+                            // paused track — only seek updates start arriving.
+                            // If we got a seek update WITHOUT zones_changed in
+                            // the same event, the zone must have resumed.
+                            if (!data.zones_changed && zone.state !== "playing") {
+                                zone.state = "playing";
+                                callbacks.onZoneChanged(zone, core);
+                            }
                         }
                     }
                 }

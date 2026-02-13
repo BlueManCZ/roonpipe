@@ -166,24 +166,29 @@ export async function updateMprisMetadata(zone: any, core: any) {
 
     updateVolume(zone);
 
-    // Cache the artwork and get path
-    let artworkPath: string | null = null;
-    if (np.image_key && core?.services?.RoonApiImage) {
-        try {
-            artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
-        } catch (_err) {
-            artworkPath = null;
-        }
-    }
-
-    mpris.metadata = {
-        "mpris:trackid": mpris.objectPath(`track/${np.image_key || "0"}`),
+    const trackId = np.image_key || "0";
+    const baseMetadata = {
+        "mpris:trackid": mpris.objectPath(`track/${trackId}`),
         "xesam:title": data.title,
         "xesam:artist": data.artists,
         "xesam:album": data.album,
         "mpris:length": (np.length || 0) * 1_000_000,
-        ...(artworkPath && { "mpris:artUrl": `file://${artworkPath}` }),
     };
+
+    // Set metadata immediately so MPRIS clients see the change without delay
+    mpris.metadata = baseMetadata;
+
+    // Then cache artwork and update metadata with artUrl if available
+    if (np.image_key && core?.services?.RoonApiImage) {
+        try {
+            const artworkPath = await cacheImage(core.services.RoonApiImage, np.image_key);
+            if (artworkPath) {
+                mpris.metadata = { ...baseMetadata, "mpris:artUrl": `file://${artworkPath}` };
+            }
+        } catch (_err) {
+            // Artwork failed to cache, metadata already set without it
+        }
+    }
 }
 
 export function updateMprisSeek(seekPosition: number) {

@@ -12,6 +12,9 @@ export interface SocketHandlers {
         categoryKey: string,
         itemIndex: number,
         actionTitle: string,
+        itemTitle?: string,
+        itemType?: string,
+        itemImageKey?: string,
     ) => Promise<any>;
 }
 
@@ -76,6 +79,9 @@ export function startSocketServer(handlers: SocketHandlers) {
                             request.category_key,
                             request.item_index,
                             request.action_title,
+                            request.item_title,
+                            request.item_type,
+                            request.item_image_key,
                         );
                         client.write(`${JSON.stringify({ error: null, success: true })}\n`);
                     } catch (error) {

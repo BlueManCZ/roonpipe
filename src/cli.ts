@@ -10,6 +10,7 @@ interface SearchResult {
     title: string;
     subtitle: string;
     item_key: string;
+    image_key: string;
     sessionKey: string;
     type: "track" | "album" | "artist" | "composer" | "playlist" | "work";
     category_key: string;
@@ -107,6 +108,7 @@ async function selectTrack(results: SearchResult[]): Promise<SearchResult | null
         if (selection === -1)
             return {
                 item_key: "",
+                image_key: "",
                 sessionKey: "",
                 title: "",
                 subtitle: "__search__",
@@ -166,6 +168,9 @@ async function playTrack(track: SearchResult, action: RoonAction): Promise<void>
             category_key: track.category_key,
             item_index: track.index,
             action_title: action.title,
+            item_title: track.title,
+            item_type: track.type,
+            item_image_key: track.image_key,
         });
         console.log("✅  Success!\n");
     } catch (error) {

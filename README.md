@@ -11,6 +11,7 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 - **Desktop Notifications** — Get notified when tracks change, complete with album artwork
 - **Playback Controls** — Play, pause, stop, skip, seek, volume, shuffle, and loop
 - **Library Search** — Search your entire Roon library (tracks, albums, artists, playlists, and works from local and streaming services)
+- **Frequency-based Re-ranking** — Frequently played items are boosted in search results, and items missing from Roon's results are injected based on your play history
 - **GNOME Search Integration** — Search and play music directly from the GNOME overview or search bar
 - **Unix Socket API** — Integrate with other applications using a simple JSON-based IPC protocol
 - **Interactive CLI** — Search and play music from your terminal with arrow key navigation and action menus
@@ -171,6 +172,7 @@ Response:
       "subtitle": "",
       "item_key": "100:0",
       "image": "/home/user/.cache/roonpipe/images/abc123.jpg",
+      "image_key": "abc123",
       "hint": "list",
       "sessionKey": "search_1234567890",
       "type": "artist",
@@ -187,6 +189,7 @@ Response:
       "subtitle": "The Beatles",
       "item_key": "101:0",
       "image": "/home/user/.cache/roonpipe/images/def456.jpg",
+      "image_key": "def456",
       "hint": "list",
       "sessionKey": "search_1234567890",
       "type": "album",
@@ -204,6 +207,7 @@ Response:
       "subtitle": "The Beatles",
       "item_key": "102:0",
       "image": "/home/user/.cache/roonpipe/images/ghi789.jpg",
+      "image_key": "ghi789",
       "hint": "action_list",
       "sessionKey": "search_1234567890",
       "type": "track",
@@ -213,6 +217,7 @@ Response:
         {"title": "Play Now"},
         {"title": "Add Next"},
         {"title": "Queue"},
+        {"title": "Play Album"},
         {"title": "Start Radio"}
       ]
     }
@@ -224,11 +229,13 @@ Response:
 - `title` — Item title
 - `subtitle` — Additional info (artist names are automatically parsed from Roon's internal format)
 - `item_key` — Item identifier (ephemeral, valid only within session context)
+- `image` — Local path to cached artwork, or `null`
+- `image_key` — Roon image key used for artwork caching and deduplication
 - `type` — Item type: `"artist"`, `"album"`, `"track"`, `"composer"`, `"playlist"`, or `"work"`
 - `actions` — List of available Roon actions for this item (known actions based on type)
 - `category_key` — Key to the category for navigation
 - `index` — Position within the category
-- `sessionKey` — Search session identifier
+- `sessionKey` — Search session identifier (`"stored"` for items injected from play history)
 
 ### Play
 
@@ -252,6 +259,9 @@ Response:
 - `category_key` — Category key from search results
 - `item_index` — Index from search results
 - `action_title` — Title of the action to execute (e.g., "Play Now", "Queue", "Add Next")
+- `item_title` — Item title (optional, used for frequency tracking and resolving injected items)
+- `item_type` — Item type (optional, used for frequency tracking)
+- `item_image_key` — Image key (optional, used for frequency tracking and resolving injected items)
 
 **How It Works:**
 The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then navigates through the action hierarchy to execute the action matching `action_title`. This approach works around Roon's ephemeral browse keys.
@@ -262,6 +272,7 @@ The play command navigates back to the item using `category_key` and `item_index
 src/
 ├── index.ts                 # Entry point, daemon/CLI mode switching
 ├── roon.ts                  # Roon API connection and browsing
+├── frequency.ts             # Play frequency tracking and search re-ranking
 ├── mpris.ts                 # MPRIS player and metadata
 ├── notification.ts          # Desktop notifications
 ├── socket.ts                # Unix socket server

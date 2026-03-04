@@ -18,6 +18,9 @@ let playFn:
           categoryKey: string,
           itemIndex: number,
           actionTitle: string,
+          itemTitle?: string,
+          itemType?: string,
+          itemImageKey?: string,
       ) => Promise<void>)
     | null = null;
 
@@ -120,6 +123,9 @@ class RoonSearchProvider extends Interface {
                         result.category_key,
                         result.index,
                         playAction.title,
+                        result.title,
+                        result.type,
+                        result.image_key,
                     );
                     console.log(`Playing: ${result.title}`);
                 }
@@ -153,6 +159,9 @@ export async function initGnomeSearchProvider(
         categoryKey: string,
         itemIndex: number,
         actionTitle: string,
+        itemTitle?: string,
+        itemType?: string,
+        itemImageKey?: string,
     ) => Promise<void>,
 ) {
     searchFn = search;

@@ -1,6 +1,6 @@
 {
     "name": "roonpipe",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "description": "Linux integration for Roon – MPRIS support, media keys, desktop notifications, and interactive search CLI",
     "main": "dist/index.js",
     "bin": {

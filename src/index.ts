@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
 import { startCLI } from "./cli";
+import { loadFrequencyData } from "./frequency";
 import { initGnomeSearchProvider } from "./gnome-search-provider";
 import { clearOldCache } from "./image-cache";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
@@ -60,6 +61,7 @@ if (cliMode) {
         // Daemon mode - start all services
         console.log("Starting RoonPipe Daemon");
         clearOldCache();
+        loadFrequencyData();
 
         // Check if GNOME Search Provider is installed
         if (isRunningOnGnome()) {

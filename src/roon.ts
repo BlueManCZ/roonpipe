@@ -7,6 +7,7 @@ import RoonApiImage from "node-roon-api-image";
 // @ts-expect-error
 import RoonApiTransport from "node-roon-api-transport";
 
+import { recordPlay, reRankResults } from "./frequency";
 import { cacheImages } from "./image-cache";
 
 let zone: any = null;
@@ -36,7 +37,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.8",
+        display_version: "1.0.9",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -108,6 +109,7 @@ export interface SearchResult {
     subtitle: string;
     item_key: string;
     image: string | null;
+    image_key: string;
     hint: string;
     sessionKey: string;
     type: ItemType;
@@ -291,6 +293,7 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
                 subtitle: parseRoonSubtitle(item.subtitle),
                 item_key: item.item_key,
                 image,
+                image_key: item.image_key || "",
                 hint: item.hint,
                 sessionKey,
                 type: itemType,
@@ -304,7 +307,7 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
         }
     }
 
-    return results;
+    return reRankResults(query, results);
 }
 
 export async function playItem(
@@ -313,6 +316,9 @@ export async function playItem(
     categoryKey: string,
     itemIndex: number,
     actionTitle: string,
+    itemTitle?: string,
+    itemType?: string,
+    itemImageKey?: string,
 ): Promise<void> {
     if (!coreInstance) throw new Error("Roon Core not connected");
     if (!zone) throw new Error("No active zone");
@@ -325,6 +331,28 @@ export async function playItem(
         zone_or_output_id: zone.zone_id,
         ...extra,
     });
+
+    // Handle injected items (from frequency store) — do a fresh search to resolve them
+    if (sessionKey === "stored" && itemTitle) {
+        console.log(`[DEBUG] Resolving stored item: "${itemTitle}" (image_key: ${itemImageKey})`);
+        const freshResults = await searchRoon(itemTitle);
+        const match = freshResults.find(
+            (r) => r.image_key === itemImageKey && r.sessionKey !== "stored",
+        );
+        if (!match) {
+            throw new Error(`Could not find "${itemTitle}" in fresh search results`);
+        }
+        return playItem(
+            match.item_key,
+            match.sessionKey,
+            match.category_key,
+            match.index,
+            actionTitle,
+            match.title,
+            match.type,
+            match.image_key,
+        );
+    }
 
     console.log(
         `[DEBUG] playItem: itemKey=${itemKey}, categoryKey=${categoryKey}, itemIndex=${itemIndex}, actionTitle=${actionTitle}`,
@@ -477,6 +505,19 @@ export async function playItem(
             albumBrowseOpts({ item_key: playNow.item_key }),
         );
         console.log("[DEBUG] Successfully started album playback");
+        recordPlay({
+            title: actualItem.title || itemTitle || "",
+            subtitle: parseRoonSubtitle(actualItem.subtitle || ""),
+            item_key: "",
+            image: null,
+            image_key: actualItem.image_key || itemImageKey || "",
+            hint: "",
+            sessionKey: "",
+            type: (itemType as any) || "track",
+            category_key: "",
+            index: 0,
+            actions: [],
+        });
         return;
     }
 
@@ -534,6 +575,20 @@ export async function playItem(
     if (!found) {
         throw new Error(`Could not find action "${actionTitle}" to execute`);
     }
+
+    recordPlay({
+        title: actualItem.title || itemTitle || "",
+        subtitle: parseRoonSubtitle(actualItem.subtitle || ""),
+        item_key: "",
+        image: null,
+        image_key: actualItem.image_key || itemImageKey || "",
+        hint: "",
+        sessionKey: "",
+        type: (itemType as any) || "track",
+        category_key: "",
+        index: 0,
+        actions: [],
+    });
 }
 
 export function getZone() {

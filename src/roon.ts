@@ -135,29 +135,35 @@ function promisify<T>(
 function parseRoonSubtitle(subtitle: string): string {
     if (!subtitle) return "";
     // Remove Roon's wiki-link style formatting: [[id|name]] -> name
-    const cleaned = subtitle.replace(/\[\[(\d+)\|([^\]]+)]]/g, "$2");
-    // Split by comma and take the first part (primary artist)
-    return cleaned.split(", ")[0].trim();
+    return subtitle.replace(/\[\[(\d+)\|([^\]]+)]]/g, "$2").trim();
 }
 
 // Known actions for each item type based on Roon's behavior
 function getKnownActions(type: string, hint: string): RoonAction[] {
-    const playbackActions: RoonAction[] = [
+    const albumActions: RoonAction[] = [
         { title: "Play Now" },
         { title: "Add Next" },
         { title: "Queue" },
         { title: "Start Radio" },
     ];
+    const trackActions: RoonAction[] = [
+        { title: "Play Now" },
+        { title: "Add Next" },
+        { title: "Queue" },
+        { title: "Play Album" },
+        { title: "Start Radio" },
+    ];
     const artistActions: RoonAction[] = [{ title: "Shuffle" }, { title: "Start Radio" }];
 
     if (hint === "action_list") {
-        return type === "track" ? playbackActions : artistActions;
+        return type === "track" ? trackActions : artistActions;
     }
 
     switch (type) {
         case "album":
+            return albumActions;
         case "track":
-            return playbackActions;
+            return trackActions;
         case "artist":
         case "composer":
             return artistActions;
@@ -252,6 +258,7 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
 
     // Second pass: build results from non-artist categories
     const results: SearchResult[] = [];
+    const seen = new Set<string>();
     for (const { category, items, cachedImages, isArtistCategory } of categoryData) {
         if (isArtistCategory) continue;
 
@@ -263,6 +270,11 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
 
             const itemType: ItemType = isPlayArtist ? "artist" : baseType;
             const actions = getKnownActions(itemType, item.hint);
+
+            // Deduplicate: skip items with the same title + image_key (e.g., top-hit vs category)
+            const dedupeKey = `${item.title}::${item.image_key}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
 
             // For "Play Artist" items, use artist image from first pass if available
             const artistName = isPlayArtist ? category.title : null;
@@ -338,8 +350,135 @@ export async function playItem(
         throw new Error("Item not found at index");
     }
 
-    const actualItemKey = loadResult.items[0].item_key;
+    const actualItem = loadResult.items[0];
+    const actualItemKey = actualItem.item_key;
     console.log(`[DEBUG] Got fresh item_key: ${actualItemKey}`);
+
+    // "Play Album" for tracks: search by artist to find the album by image_key, then play it
+    if (actionTitle === "Play Album") {
+        const trackImageKey = actualItem.image_key;
+        if (!trackImageKey) {
+            throw new Error("Track has no image_key — cannot identify album");
+        }
+
+        // Extract artist name (first comma-separated entry from subtitle)
+        const artist = actualItem.subtitle?.split(", ")[0]?.trim();
+        if (!artist) {
+            throw new Error("Track has no subtitle — cannot determine artist");
+        }
+
+        // Start a fresh search using the artist name to find albums
+        const albumSessionKey = `album_${Date.now()}`;
+        const albumBrowseOpts = (extra: object = {}) => ({
+            hierarchy: "search",
+            multi_session_key: albumSessionKey,
+            zone_or_output_id: zone.zone_id,
+            ...extra,
+        });
+
+        console.log(
+            `[DEBUG] Searching for album by artist: "${artist}" (track image_key: ${trackImageKey})`,
+        );
+
+        const searchResult = await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ input: artist }),
+        );
+        const categories = await promisify<any>(
+            browse.load.bind(browse),
+            albumBrowseOpts({ offset: 0, count: searchResult.list.count }),
+        );
+
+        // Find the Albums category
+        const albumsCategory = categories.items?.find(
+            (cat: any) => cat.title?.toLowerCase() === "albums",
+        );
+        if (!albumsCategory) {
+            throw new Error("No Albums category found in search results");
+        }
+
+        // Browse into Albums category
+        const albumsCatBrowse = await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ item_key: albumsCategory.item_key }),
+        );
+
+        const albums = await promisify<any>(
+            browse.load.bind(browse),
+            albumBrowseOpts({
+                offset: 0,
+                count: Math.min(albumsCatBrowse.list.count, 20),
+            }),
+        );
+
+        // Find album matching the track's image_key
+        const matchingAlbum = albums.items?.find((album: any) => album.image_key === trackImageKey);
+        if (!matchingAlbum) {
+            throw new Error("Could not find album matching this track's artwork");
+        }
+
+        console.log(`[DEBUG] Found matching album: "${matchingAlbum.title}"`);
+
+        // Navigate: album → album list item → "Play Album" action_list → "Play Now"
+        // Level 1: Browse into the album
+        await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ item_key: matchingAlbum.item_key }),
+        );
+        const l1Items = await promisify<any>(
+            browse.load.bind(browse),
+            albumBrowseOpts({ offset: 0, count: 5 }),
+        );
+
+        // Level 2: Browse into the album's list item
+        const albumListItem = l1Items.items?.find((i: any) => i.hint === "list");
+        if (!albumListItem) {
+            throw new Error("Could not find album list item");
+        }
+
+        await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ item_key: albumListItem.item_key }),
+        );
+        const l2Items = await promisify<any>(
+            browse.load.bind(browse),
+            albumBrowseOpts({ offset: 0, count: 30 }),
+        );
+
+        // Find "Play Album" action_list
+        const playAlbumAction = l2Items.items?.find(
+            (i: any) => i.hint === "action_list" && i.title === "Play Album",
+        );
+        if (!playAlbumAction) {
+            throw new Error('Could not find "Play Album" action on the album');
+        }
+
+        // Level 3: Browse into "Play Album" to get the actions
+        await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ item_key: playAlbumAction.item_key }),
+        );
+        const l3Items = await promisify<any>(
+            browse.load.bind(browse),
+            albumBrowseOpts({ offset: 0, count: 10 }),
+        );
+
+        // Execute "Play Now"
+        const playNow = l3Items.items?.find(
+            (i: any) => i.hint === "action" && i.title === "Play Now",
+        );
+        if (!playNow) {
+            throw new Error('Could not find "Play Now" action on album');
+        }
+
+        console.log(`[DEBUG] Playing album: "${matchingAlbum.title}"`);
+        await promisify<any>(
+            browse.browse.bind(browse),
+            albumBrowseOpts({ item_key: playNow.item_key }),
+        );
+        console.log("[DEBUG] Successfully started album playback");
+        return;
+    }
 
     // Navigate to the item to find actions
     async function findAndExecuteAction(

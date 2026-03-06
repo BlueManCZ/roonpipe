@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { getImageCachePath, isImageCached } from "./image-cache";
 import type { SearchResult } from "./roon";
+import { getKnownActions } from "./roon";
 
 type ItemType = "track" | "album" | "artist" | "composer" | "playlist" | "work";
 
@@ -91,6 +92,21 @@ export function recordPlay(result: SearchResult): void {
     }
 }
 
+export function removeFrequencyEntry(type: string, title: string, imageKey: string): boolean {
+    try {
+        const key = makeKey(type, title, imageKey);
+        if (key in data.items) {
+            delete data.items[key];
+            saveToDisk();
+            return true;
+        }
+        return false;
+    } catch (e) {
+        console.error("Failed to remove frequency entry:", e);
+        return false;
+    }
+}
+
 function computeScore(item: StoredItem): number {
     const daysSinceLastPlay = (Date.now() - item.lastPlayed) / (24 * 60 * 60 * 1000);
     return Math.log2(1 + item.count) * 0.5 ** (daysSinceLastPlay / 30);
@@ -102,6 +118,8 @@ export function reRankResults(query: string, results: SearchResult[]): SearchRes
 
         // Build set of existing result dedupe keys
         const existingKeys = new Set(results.map((r) => `${r.title}::${r.image_key}`));
+
+        const removeAction = { title: "Remove from History", command: "remove_frequency" };
 
         // Find stored items matching the query that aren't already in results
         const injected: SearchResult[] = [];
@@ -127,33 +145,24 @@ export function reRankResults(query: string, results: SearchResult[]): SearchRes
                 type: item.type,
                 category_key: "",
                 index: 0,
-                actions:
-                    item.type === "track"
-                        ? [
-                              { title: "Play Now" },
-                              { title: "Add Next" },
-                              { title: "Queue" },
-                              { title: "Play Album" },
-                              { title: "Start Radio" },
-                          ]
-                        : item.type === "album"
-                          ? [
-                                { title: "Play Now" },
-                                { title: "Add Next" },
-                                { title: "Queue" },
-                                { title: "Start Radio" },
-                            ]
-                          : item.type === "artist" || item.type === "composer"
-                            ? [{ title: "Shuffle" }, { title: "Start Radio" }]
-                            : [],
+                actions: [...getKnownActions(item.type, "action_list"), removeAction],
             });
         }
 
-        // Build frequency score map
+        // Build frequency score map and track which dedupe keys have history
         const scoreMap = new Map<string, number>();
+        const hasHistory = new Set<string>();
         for (const [, item] of Object.entries(data.items)) {
             const dedupeKey = `${item.title}::${item.image_key}`;
             scoreMap.set(dedupeKey, computeScore(item));
+            hasHistory.add(dedupeKey);
+        }
+
+        // Add "Remove from History" to Roon results that have frequency data
+        for (const r of results) {
+            if (hasHistory.has(`${r.title}::${r.image_key}`)) {
+                r.actions = [...r.actions, removeAction];
+            }
         }
 
         const merged = [...results, ...injected];

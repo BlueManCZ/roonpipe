@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import net from "node:net";
 
+import { removeFrequencyEntry } from "./frequency";
+
 const SOCKET_PATH = "/tmp/roonpipe.sock";
 let socketServer: net.Server | null = null;
 
@@ -89,6 +91,14 @@ export function startSocketServer(handlers: SocketHandlers) {
                             `${JSON.stringify({ error: String(error), success: false })}\n`,
                         );
                     }
+                    client.end();
+                } else if (request.command === "remove_frequency") {
+                    const removed = removeFrequencyEntry(
+                        request.item_type,
+                        request.item_title,
+                        request.item_image_key,
+                    );
+                    client.write(`${JSON.stringify({ error: null, success: removed })}\n`);
                     client.end();
                 } else {
                     client.write(`${JSON.stringify({ error: "Unknown command" })}\n`);

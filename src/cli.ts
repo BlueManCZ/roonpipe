@@ -4,6 +4,7 @@ import { Separator, select } from "@inquirer/prompts";
 
 interface RoonAction {
     title: string;
+    command?: string;
 }
 
 interface SearchResult {
@@ -136,6 +137,7 @@ async function selectAction(availableActions: RoonAction[]): Promise<RoonAction 
             "Add Next": "⏭️",
             "Play From Here": "⏭️",
             "Start Radio": "📻",
+            "Remove from History": "🗑️",
         };
 
         const choices = availableActions.map((action) => ({
@@ -199,7 +201,6 @@ export async function startCLI() {
 
         if (selected.subtitle === "__search__") continue;
 
-        // Use actions from search result
         if (selected.actions.length === 0) {
             console.log("No actions available for this item.\n");
             continue;
@@ -207,6 +208,21 @@ export async function startCLI() {
 
         const action = await selectAction(selected.actions);
         if (!action) continue;
+
+        if (action.command === "remove_frequency") {
+            try {
+                await sendCommand({
+                    command: "remove_frequency",
+                    item_title: selected.title,
+                    item_type: selected.type,
+                    item_image_key: selected.image_key,
+                });
+                console.log("✅  Removed from history.\n");
+            } catch (error) {
+                console.error("❌  Failed:", error);
+            }
+            continue;
+        }
 
         await playTrack(selected, action);
     }

@@ -40,8 +40,8 @@ Found 50 result(s):
 
 ? Select an item to play: 💿 The Wall · Pink Floyd
 ? What do you want to do?
-❯ ▶️  Play Now
-  ⏭️  Add Next
+❯ ▶️ Play Now
+  ⏭️ Add Next
   📋 Queue
   📻 Start Radio
 ```

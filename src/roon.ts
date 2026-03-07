@@ -37,7 +37,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.10",
+        display_version: "1.0.11",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -247,14 +247,14 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
     }
 
     // First pass: collect artist images from artist/composer categories
-    const artistImages = new Map<string, string>();
+    const artistImages = new Map<string, { path: string; key: string }>();
     for (const { items, cachedImages, isArtistCategory } of categoryData) {
         if (!isArtistCategory) continue;
 
         for (const item of items) {
             const imagePath = cachedImages.get(item.image_key);
             if (item.title && imagePath) {
-                artistImages.set(item.title, imagePath);
+                artistImages.set(item.title, { path: imagePath, key: item.image_key });
             }
         }
     }
@@ -269,6 +269,7 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
 
         for (let index = 0; index < items.length; index++) {
             const item = items[index];
+            if (item.title === "No Results") continue;
             const isPlayArtist = item.hint === "action_list" && item.title === "Play Artist";
 
             // Refine type: in mixed categories (e.g., "Top Results"), use hint to
@@ -290,10 +291,8 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
 
             // For "Play Artist" items, use artist image from first pass if available
             const artistName = isPlayArtist ? category.title : null;
-            const image =
-                cachedImages.get(item.image_key) ||
-                (artistName && artistImages.get(artistName)) ||
-                null;
+            const artistInfo = artistName ? artistImages.get(artistName) : null;
+            const image = cachedImages.get(item.image_key) || artistInfo?.path || null;
 
             results.push({
                 title: isPlayArtist
@@ -303,7 +302,7 @@ export async function searchRoon(query: string): Promise<SearchResult[]> {
                 subtitle: parseRoonSubtitle(item.subtitle),
                 item_key: item.item_key,
                 image,
-                image_key: item.image_key || "",
+                image_key: item.image_key || artistInfo?.key || "",
                 hint: item.hint,
                 sessionKey,
                 type: itemType,
@@ -520,7 +519,7 @@ export async function playItem(
                 );
                 console.log("[DEBUG] Successfully started album playback");
                 recordPlay({
-                    title: actualItem.title || itemTitle || "",
+                    title: itemTitle || actualItem.title || "",
                     subtitle: parseRoonSubtitle(subtitle),
                     item_key: "",
                     image: null,
@@ -595,7 +594,7 @@ export async function playItem(
     }
 
     recordPlay({
-        title: actualItem.title || itemTitle || "",
+        title: itemTitle || actualItem.title || "",
         subtitle: parseRoonSubtitle(actualItem.subtitle || ""),
         item_key: "",
         image: null,

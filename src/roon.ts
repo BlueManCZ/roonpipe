@@ -37,7 +37,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.11",
+        display_version: "1.0.12",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -51,6 +51,12 @@ export function initRoon(callbacks: RoonCallbacks) {
                     zone = data.zones.find((z: any) => z.state === "playing") || data.zones[0];
                     callbacks.onZoneChanged(zone, core);
                 } else if (cmd === "Changed") {
+                    if (data.zones_added && !zone) {
+                        zone =
+                            data.zones_added.find((z: any) => z.state === "playing") ||
+                            data.zones_added[0];
+                        callbacks.onZoneChanged(zone, core);
+                    }
                     if (data.zones_changed) {
                         const playingZone = data.zones_changed.find(
                             (z: any) => z.state === "playing",
@@ -61,6 +67,8 @@ export function initRoon(callbacks: RoonCallbacks) {
                             zone =
                                 data.zones_changed.find((z: any) => z.zone_id === zone.zone_id) ||
                                 zone;
+                        } else {
+                            zone = data.zones_changed[0];
                         }
                         callbacks.onZoneChanged(zone, core);
                     }
@@ -93,6 +101,15 @@ export function initRoon(callbacks: RoonCallbacks) {
             coreInstance = null;
             callbacks.onCoreUnpaired(core);
             console.log(`Core unpaired: ${core.display_name}`);
+
+            // Reset the scan counter so periodic_scan sends SOOD queries every
+            // 10s instead of every 60s (the library throttles after scan_count >= 6).
+            roon.scan_count = -1;
+        },
+        moo_onerror: (moo: any) => {
+            console.error(
+                `Roon API connection error (${moo?.transport?.host}:${moo?.transport?.port})`,
+            );
         },
     });
 

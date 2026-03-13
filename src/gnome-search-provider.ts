@@ -151,6 +151,8 @@ RoonSearchProvider.configureMembers({
     },
 });
 
+let gnomeProviderInitialized = false;
+
 export async function initGnomeSearchProvider(
     search: (query: string) => Promise<any[]>,
     play: (
@@ -167,6 +169,9 @@ export async function initGnomeSearchProvider(
     searchFn = search;
     playFn = play;
 
+    // D-Bus name is already registered; just update the function refs above
+    if (gnomeProviderInitialized) return;
+
     try {
         const bus = dbus.sessionBus();
 
@@ -177,6 +182,7 @@ export async function initGnomeSearchProvider(
         const provider = new RoonSearchProvider();
         bus.export(OBJECT_PATH, provider);
 
+        gnomeProviderInitialized = true;
         console.log("GNOME Search Provider initialized on", BUS_NAME);
     } catch (error) {
         console.error("Failed to initialize GNOME Search Provider:", error);

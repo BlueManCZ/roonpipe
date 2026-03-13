@@ -50,6 +50,16 @@ export function isInstanceRunning(): Promise<boolean> {
 }
 
 export function startSocketServer(handlers: SocketHandlers) {
+    // Close old server if it exists (e.g., after core reconnection)
+    if (socketServer) {
+        try {
+            socketServer.close();
+        } catch (_) {
+            // Ignore close errors on stale server
+        }
+        socketServer = null;
+    }
+
     // Remove old socket if exists
     if (fs.existsSync(SOCKET_PATH)) {
         fs.unlinkSync(SOCKET_PATH);
@@ -114,6 +124,10 @@ export function startSocketServer(handlers: SocketHandlers) {
         client.on("error", (err) => {
             console.error("Client error:", err);
         });
+    });
+
+    socketServer.on("error", (err) => {
+        console.error("Socket server error:", err);
     });
 
     socketServer.listen(SOCKET_PATH, () => {

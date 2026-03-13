@@ -110,6 +110,10 @@ export function initMpris(getTransport: () => any, getZone: () => any) {
         return zone?.now_playing?.seek_position ? zone.now_playing.seek_position * 1_000_000 : 0;
     };
 
+    mpris.on("error", (err: any) => {
+        console.error("MPRIS error:", err);
+    });
+
     // Set initial states
     mpris.canControl = true;
     mpris.canPlay = true;

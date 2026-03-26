@@ -37,7 +37,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.12",
+        display_version: "1.0.13",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",

@@ -17,7 +17,7 @@ export async function showTrackNotification(zone: any, core: any) {
     if (isFirstUpdate) {
         isFirstUpdate = false;
         if (zone?.now_playing) {
-            lastNotifiedTrack = zone.now_playing.image_key || "";
+            lastNotifiedTrack = `${zone.now_playing.three_line?.line1 || ""}|${zone.now_playing.image_key || ""}`;
             lastState = zone.state;
         }
         return;
@@ -25,7 +25,7 @@ export async function showTrackNotification(zone: any, core: any) {
 
     if (!zone?.now_playing) return;
 
-    const trackId = zone.now_playing.image_key || "";
+    const trackId = `${zone.now_playing.three_line?.line1 || ""}|${zone.now_playing.image_key || ""}`;
     const isPlaying = zone.state === "playing";
 
     const prevState = lastState;

@@ -6,3 +6,4 @@ Type=Application
 Exec=roonpipe %u
 Terminal=false
 Categories=Audio;
+MimeType=x-scheme-handler/tidal;

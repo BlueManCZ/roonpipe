@@ -37,7 +37,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.13",
+        display_version: "1.0.14",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -631,4 +631,53 @@ export function getZone() {
 
 export function getCore() {
     return coreInstance;
+}
+
+export interface NowPlayingResponse {
+    playing: boolean;
+    state: "playing" | "paused" | "stopped" | "loading";
+    title?: string;
+    artist?: string;
+    album?: string;
+    image_key?: string;
+    length_seconds?: number;
+    seek_position_seconds?: number;
+    zone_name?: string;
+}
+
+/**
+ * Snapshot of the currently loaded track on the active zone.
+ *
+ * ``playing`` is true when a track is *loaded* — i.e. the user can meaningfully
+ * say "what's on" — which includes the paused state. ``state`` carries the raw
+ * Roon state for callers that need to distinguish playing vs. paused. When no
+ * zone is paired or the zone is idle, returns ``{playing: false, state: "stopped"}``
+ * with no metadata fields.
+ */
+export function getNowPlaying(): NowPlayingResponse {
+    if (!zone || !zone.now_playing) {
+        return { playing: false, state: "stopped" };
+    }
+    const np = zone.now_playing;
+    const parsed = parseNowPlaying(np);
+    const rawState: string = zone.state || "stopped";
+    // Narrow to the documented set; anything unexpected from Roon becomes "stopped".
+    const state: NowPlayingResponse["state"] =
+        rawState === "playing" ||
+        rawState === "paused" ||
+        rawState === "stopped" ||
+        rawState === "loading"
+            ? rawState
+            : "stopped";
+    return {
+        playing: state !== "stopped",
+        state,
+        title: parsed.title,
+        artist: parsed.artists[0] || "",
+        album: parsed.album,
+        image_key: np.image_key || "",
+        length_seconds: Math.round(np.length || 0),
+        seek_position_seconds: Math.round(np.seek_position || 0),
+        zone_name: zone.display_name || "",
+    };
 }

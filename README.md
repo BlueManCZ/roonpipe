@@ -14,6 +14,7 @@ A Linux integration layer for [Roon](https://roonlabs.com/) that brings native d
 - **Frequency-based Re-ranking** — Frequently played items are boosted in search results, and items missing from Roon's results are injected based on your play history
 - **GNOME Search Integration** — Search and play music directly from the GNOME overview or search bar
 - **Unix Socket API** — Integrate with other applications using a simple JSON-based IPC protocol
+- **Network API** — Control RoonPipe from another device on your LAN over a token-protected TCP listener
 - **Interactive CLI** — Search and play music from your terminal with arrow key navigation and action menus
 
 ## CLI Example
@@ -266,6 +267,52 @@ Response:
 **How It Works:**
 The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then navigates through the action hierarchy to execute the action matching `action_title`. This approach works around Roon's ephemeral browse keys.
 
+## Network API
+
+By default the JSON API is only reachable through the local Unix socket. To control RoonPipe from another device on your LAN — a headless box, a home-automation agent, a phone — start the daemon with a network listener:
+
+```bash
+ROONPIPE_TOKEN='a-long-random-secret' roonpipe --listen 9090
+```
+
+- `--listen <port>` binds to all interfaces (`0.0.0.0`); `--listen <host>:<port>` pins one interface (e.g. `--listen 192.168.1.50:9090`).
+- `ROONPIPE_TOKEN` is **required**. The daemon fails closed: `--listen` without a token (or with an invalid port) exits with an error, so the control surface is never exposed unauthenticated.
+- The network listener comes up once a Roon Core has paired, alongside the Unix socket. The Unix socket stays local and token-free for on-host clients (CLI, GNOME).
+
+The protocol is identical to the [Socket API](#socket-api) — the same `search`, `play`, `now_playing`, `play_tidal_track`, and `remove_frequency` commands — except every request must include a matching `token` field:
+
+```bash
+# from a remote device on the LAN
+echo '{"command":"now_playing","token":"a-long-random-secret"}' | nc 10.0.0.46 9090
+```
+
+Response:
+```json
+{
+  "error": null,
+  "playing": true,
+  "state": "paused",
+  "title": "Pure Sunlight",
+  "artist": "Mr FijiWiji",
+  "album": "Pure Sunlight",
+  "image_key": "1f44434b3a526060f8b260b9713647ff",
+  "length_seconds": 337,
+  "seek_position_seconds": 64,
+  "zone_name": "Living Room"
+}
+```
+
+A request with a missing or wrong token is rejected before any handler runs:
+
+```json
+{"error":"Unauthorized"}
+```
+
+**Notes:**
+- One request per connection: the response is a single newline-terminated JSON object, after which the connection is closed.
+- The token travels in plaintext. Keep the listener on a trusted LAN, or tunnel it (VPN/SSH) over untrusted networks — do not expose the port to the internet.
+- RoonPipe can only control playback while the Roon Core is reachable.
+
 ## Project Structure
 
 ```
@@ -275,7 +322,7 @@ src/
 ├── frequency.ts             # Play frequency tracking and search re-ranking
 ├── mpris.ts                 # MPRIS player and metadata
 ├── notification.ts          # Desktop notifications
-├── socket.ts                # Unix socket server
+├── socket.ts                # Unix socket + TCP network API server
 ├── image-cache.ts           # Album artwork caching
 ├── gnome-search-provider.ts # GNOME search provider integration
 └── cli.ts                   # Interactive terminal interface

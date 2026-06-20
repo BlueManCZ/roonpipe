@@ -267,6 +267,74 @@ Response:
 **How It Works:**
 The play command navigates back to the item using `category_key` and `item_index` to get fresh, valid keys, then navigates through the action hierarchy to execute the action matching `action_title`. This approach works around Roon's ephemeral browse keys.
 
+### Queue
+
+Read the play queue of the active zone:
+
+```bash
+echo '{"command":"queue"}' | nc -U /tmp/roonpipe.sock
+```
+
+Response:
+```json
+{
+  "error": null,
+  "zone_name": "Living Room",
+  "total_count": 2,
+  "items": [
+    {
+      "queue_item_id": 100,
+      "title": "Pure Sunlight",
+      "artist": "Mr FijiWiji",
+      "album": "Pure Sunlight",
+      "image_key": "1f44434b3a526060f8b260b9713647ff",
+      "length_seconds": 337
+    },
+    {
+      "queue_item_id": 101,
+      "title": "Breathe",
+      "artist": "Televisor",
+      "album": "Breathe",
+      "image_key": "a2c91b7e5d0f4488b1c9e6d2f3a45678",
+      "length_seconds": 251
+    }
+  ]
+}
+```
+
+**Queue Response Fields:**
+- `zone_name` — Display name of the zone the queue belongs to (empty when no zone is paired)
+- `total_count` — Number of items in the snapshot
+- `items` — Upcoming queue items in play order; the currently playing track is the first entry while it plays
+  - `queue_item_id` — Roon queue item identifier (stable within the queue)
+  - `title` / `artist` / `album` — Track metadata (artist is the first of Roon's `/`-joined list)
+  - `image_key` — Roon image key for artwork caching
+  - `length_seconds` — Track length in seconds
+
+**Notes:**
+- The queue follows the active zone and is capped at the next 100 items.
+- An empty queue (or no paired core) returns `"total_count": 0` and `"items": []`.
+
+### Play From Queue
+
+Jump playback to a specific queue item, using a `queue_item_id` from the [Queue](#queue) response:
+
+```bash
+echo '{"command":"play_from_queue","queue_item_id":1090}' | nc -U /tmp/roonpipe.sock
+```
+
+Response:
+```json
+{
+  "error": null,
+  "success": true
+}
+```
+
+**Notes:**
+- This is the **only** queue mutation Roon's API exposes (`play_from_here`). It starts playing the chosen item, so everything *before* it drops out of the upcoming queue.
+- Roon's extension API has **no** way to remove an arbitrary item, clear, or reorder the queue — only the first-party Roon app can do that.
+
 ## Network API
 
 By default the JSON API is only reachable through the local Unix socket. To control RoonPipe from another device on your LAN — a headless box, a home-automation agent, a phone — start the daemon with a network listener:
@@ -279,7 +347,7 @@ ROONPIPE_TOKEN='a-long-random-secret' roonpipe --listen 9090
 - `ROONPIPE_TOKEN` is **required**. The daemon fails closed: `--listen` without a token (or with an invalid port) exits with an error, so the control surface is never exposed unauthenticated.
 - The network listener comes up once a Roon Core has paired, alongside the Unix socket. The Unix socket stays local and token-free for on-host clients (CLI, GNOME).
 
-The protocol is identical to the [Socket API](#socket-api) — the same `search`, `play`, `now_playing`, `play_tidal_track`, and `remove_frequency` commands — except every request must include a matching `token` field:
+The protocol is identical to the [Socket API](#socket-api) — the same `search`, `play`, `now_playing`, `queue`, `play_from_queue`, `play_tidal_track`, and `remove_frequency` commands — except every request must include a matching `token` field:
 
 ```bash
 # from a remote device on the LAN

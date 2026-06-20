@@ -8,7 +8,16 @@ import { initGnomeSearchProvider } from "./gnome-search-provider";
 import { clearOldCache } from "./image-cache";
 import { initMpris, updateMprisMetadata, updateMprisSeek } from "./mpris";
 import { showTrackNotification } from "./notification";
-import { getCore, getNowPlaying, getZone, initRoon, playItem, searchRoon } from "./roon";
+import {
+    getCore,
+    getNowPlaying,
+    getQueue,
+    getZone,
+    initRoon,
+    playFromQueue,
+    playItem,
+    searchRoon,
+} from "./roon";
 import { isInstanceRunning, startSocketServer, startTcpServer } from "./socket";
 import { playTidalTrack } from "./tidal";
 import { handleTidalUrl } from "./url-handler";
@@ -135,6 +144,8 @@ if (tidalUrl) {
                     play: playItem,
                     playTidalTrack,
                     nowPlaying: getNowPlaying,
+                    queue: getQueue,
+                    playFromQueue,
                 };
                 startSocketServer(handlers);
 

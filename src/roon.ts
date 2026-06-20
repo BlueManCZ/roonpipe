@@ -13,6 +13,15 @@ import { cacheImages } from "./image-cache";
 let zone: any = null;
 let coreInstance: any = null;
 
+// Cached copy of the active zone's play queue, kept in sync via a Roon queue
+// subscription (the transport API has no synchronous getter). ``queueZoneId``
+// tracks which zone the subscription is bound to so we only re-subscribe when
+// the active zone actually changes.
+const QUEUE_MAX_ITEMS = 100;
+let queue: any[] = [];
+let queueSub: { unsubscribe: (cb?: any) => void } | null = null;
+let queueZoneId: string | null = null;
+
 export interface RoonCallbacks {
     onCorePaired: (core: any) => void;
     onCoreUnpaired: (core: any) => void;
@@ -33,6 +42,60 @@ export const parseNowPlaying = (nowPlaying: any) => {
     return { title, artists, album };
 };
 
+// Apply the incremental ``changes`` from a queue "Changed" message to the
+// cached queue. Roon sends ordered remove/insert operations against the
+// current list rather than a full snapshot.
+function applyQueueChanges(changes: any[]) {
+    for (const change of changes) {
+        if (change.operation === "remove") {
+            queue.splice(change.index, change.count);
+        } else if (change.operation === "insert") {
+            queue.splice(change.index, 0, ...(change.items || []));
+        }
+    }
+}
+
+// (Re)subscribe to the queue of the active zone. No-op if already subscribed to
+// the same zone; tears down the previous subscription when the zone changes so
+// the cached queue always reflects whatever is currently playing.
+function subscribeQueue(core: any, targetZone: any) {
+    const transport = core?.services?.RoonApiTransport;
+    if (!transport || !targetZone) return;
+    if (queueSub && queueZoneId === targetZone.zone_id) return;
+
+    if (queueSub) {
+        try {
+            queueSub.unsubscribe();
+        } catch (_) {
+            // Ignore errors tearing down a stale subscription
+        }
+    }
+    queue = [];
+    queueZoneId = targetZone.zone_id;
+    queueSub = transport.subscribe_queue(targetZone, QUEUE_MAX_ITEMS, (cmd: any, data: any) => {
+        if (cmd === "Subscribed") {
+            queue = data.items || [];
+        } else if (cmd === "Changed" && data.changes) {
+            applyQueueChanges(data.changes);
+        } else if (cmd === "Unsubscribed") {
+            queue = [];
+        }
+    });
+}
+
+function resetQueue() {
+    if (queueSub) {
+        try {
+            queueSub.unsubscribe();
+        } catch (_) {
+            // Ignore errors tearing down a stale subscription
+        }
+    }
+    queueSub = null;
+    queueZoneId = null;
+    queue = [];
+}
+
 export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
@@ -46,16 +109,23 @@ export function initRoon(callbacks: RoonCallbacks) {
             coreInstance = core;
             const transport = core.services.RoonApiTransport;
 
+            // Notify listeners of a zone change and keep the queue subscription
+            // bound to whatever zone is now active.
+            const emitZoneChanged = (z: any) => {
+                callbacks.onZoneChanged(z, core);
+                subscribeQueue(core, z);
+            };
+
             transport.subscribe_zones((cmd: any, data: any) => {
                 if (cmd === "Subscribed") {
                     zone = data.zones.find((z: any) => z.state === "playing") || data.zones[0];
-                    callbacks.onZoneChanged(zone, core);
+                    emitZoneChanged(zone);
                 } else if (cmd === "Changed") {
                     if (data.zones_added && !zone) {
                         zone =
                             data.zones_added.find((z: any) => z.state === "playing") ||
                             data.zones_added[0];
-                        callbacks.onZoneChanged(zone, core);
+                        emitZoneChanged(zone);
                     }
                     if (data.zones_changed) {
                         const playingZone = data.zones_changed.find(
@@ -70,7 +140,7 @@ export function initRoon(callbacks: RoonCallbacks) {
                         } else {
                             zone = data.zones_changed[0];
                         }
-                        callbacks.onZoneChanged(zone, core);
+                        emitZoneChanged(zone);
                     }
                     if (data.zones_seek_changed) {
                         const seekUpdate = data.zones_seek_changed.find(
@@ -86,7 +156,7 @@ export function initRoon(callbacks: RoonCallbacks) {
                             // the same event, the zone must have resumed.
                             if (!data.zones_changed && zone.state !== "playing") {
                                 zone.state = "playing";
-                                callbacks.onZoneChanged(zone, core);
+                                emitZoneChanged(zone);
                             }
                         }
                     }
@@ -99,6 +169,7 @@ export function initRoon(callbacks: RoonCallbacks) {
         core_unpaired: (core: any) => {
             zone = null;
             coreInstance = null;
+            resetQueue();
             callbacks.onCoreUnpaired(core);
             console.log(`Core unpaired: ${core.display_name}`);
 
@@ -680,4 +751,68 @@ export function getNowPlaying(): NowPlayingResponse {
         seek_position_seconds: Math.round(np.seek_position || 0),
         zone_name: zone.display_name || "",
     };
+}
+
+export interface QueueItem {
+    queue_item_id: number;
+    title: string;
+    artist: string;
+    album: string;
+    image_key: string;
+    length_seconds: number;
+}
+
+export interface QueueResponse {
+    zone_name?: string;
+    total_count: number;
+    items: QueueItem[];
+}
+
+// Flatten a raw Roon queue item into the shape exposed over the API. Roon packs
+// title/artist/album into ``three_line`` (with ``two_line``/``one_line`` as
+// progressively sparser fallbacks) and, like now-playing, joins multiple
+// artists with " / " — we keep the first to match parseNowPlaying.
+function mapQueueItem(item: any): QueueItem {
+    const rawArtist = item.three_line?.line2 || item.two_line?.line2 || "";
+    return {
+        queue_item_id: item.queue_item_id,
+        title: item.three_line?.line1 || item.two_line?.line1 || item.one_line?.line1 || "",
+        artist: rawArtist ? rawArtist.split(" / ")[0].trim() : "",
+        album: item.three_line?.line3 || "",
+        image_key: item.image_key || "",
+        length_seconds: Math.round(item.length || 0),
+    };
+}
+
+/**
+ * Snapshot of the active zone's play queue. Returns the upcoming items in order
+ * (the currently playing track is the first entry while it plays). When no zone
+ * is paired or the queue is empty, ``items`` is ``[]`` and ``total_count`` is 0.
+ */
+export function getQueue(): QueueResponse {
+    return {
+        zone_name: zone?.display_name || "",
+        total_count: queue.length,
+        items: queue.map(mapQueueItem),
+    };
+}
+
+/**
+ * Jump playback to a specific queue item (Roon's ``play_from_here``). This is the
+ * only queue mutation Roon's API exposes: it starts playing the given item, so
+ * everything before it drops out of the upcoming queue. ``queueItemId`` is the
+ * ``queue_item_id`` from a {@link getQueue} item.
+ */
+export function playFromQueue(queueItemId: number): void {
+    if (!zone) throw new Error("No active zone");
+    if (!Number.isFinite(queueItemId)) throw new Error("Invalid queue_item_id");
+    const transport = coreInstance?.services?.RoonApiTransport;
+    if (!transport) throw new Error("No transport service");
+    // Roon's play_from_here performs the jump but never sends a completion ack,
+    // so success can't be read from its callback. Validate the id against the
+    // cached queue instead (deterministic, and rejects stale IDs), then fire.
+    if (!queue.some((item) => item.queue_item_id === queueItemId)) {
+        throw new Error("queue_item_id not in current queue");
+    }
+    transport.play_from_here(zone, queueItemId);
 }

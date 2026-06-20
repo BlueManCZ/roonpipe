@@ -3,7 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 
 import { removeFrequencyEntry } from "./frequency";
-import type { NowPlayingResponse } from "./roon";
+import type { NowPlayingResponse, QueueResponse } from "./roon";
 
 const SOCKET_PATH = "/tmp/roonpipe.sock";
 let socketServer: net.Server | null = null;
@@ -23,6 +23,8 @@ export interface SocketHandlers {
     ) => Promise<any>;
     playTidalTrack: (trackId: string) => Promise<{ title: string; artist: string }>;
     nowPlaying: () => NowPlayingResponse;
+    queue: () => QueueResponse;
+    playFromQueue: (queueItemId: number) => void;
 }
 
 /**
@@ -126,6 +128,24 @@ async function processRequest(
                     state: "stopped",
                 })}\n`,
             );
+        }
+        client.end();
+    } else if (request.command === "queue") {
+        try {
+            const snapshot = handlers.queue();
+            client.write(`${JSON.stringify({ error: null, ...snapshot })}\n`);
+        } catch (error) {
+            client.write(
+                `${JSON.stringify({ error: String(error), total_count: 0, items: [] })}\n`,
+            );
+        }
+        client.end();
+    } else if (request.command === "play_from_queue") {
+        try {
+            await handlers.playFromQueue(Number(request.queue_item_id));
+            client.write(`${JSON.stringify({ error: null, success: true })}\n`);
+        } catch (error) {
+            client.write(`${JSON.stringify({ error: String(error), success: false })}\n`);
         }
         client.end();
     } else {

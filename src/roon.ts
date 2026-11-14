@@ -161,13 +161,15 @@ export function getPairingStatus(): PairingStatus {
 
 // Explain an unpaired daemon on the console: once shortly after startup, then
 // at a slower cadence so a long-running daemon stays diagnosable without spam.
-function startPairingWatchdog(roon: any) {
+function startPairingWatchdog() {
     let unpairedForMs = 0;
     let lastWarnedAtMs = 0;
     let wasPaired = false;
 
     const timer = setInterval(() => {
-        if (roon.is_paired) {
+        // Use our own pairing state: the library's ``is_paired`` flag stays false
+        // after a reconnect to the same Core, which would warn forever.
+        if (coreInstance) {
             // Reset so a later unpair (core restart, extension disabled) warns again.
             unpairedForMs = 0;
             lastWarnedAtMs = 0;
@@ -194,24 +196,38 @@ function startPairingWatchdog(roon: any) {
     timer.unref();
 }
 
-function resetQueue() {
-    if (queueSub) {
+// Whether the websocket to ``core`` is still open. node-roon-api clears
+// ``transport.ws`` as soon as the socket closes.
+function isCoreConnected(core: any): boolean {
+    return Boolean(core?.moo?.transport?.ws);
+}
+
+function resetQueue(core: any) {
+    const sub = queueSub;
+    queueSub = null;
+    queueZoneId = null;
+    queue = [];
+
+    // Only unsubscribe over a live connection. ``core_unpaired`` usually fires
+    // *because* the connection dropped (Core restart, resume from suspend), and
+    // it runs from inside node-roon-api's request cleanup. Sending a request on
+    // the closed transport re-enters that cleanup, which throws outside any
+    // try/catch here and takes the whole daemon down. The Core has already
+    // discarded the subscription along with the connection.
+    if (sub && isCoreConnected(core)) {
         try {
-            queueSub.unsubscribe();
+            sub.unsubscribe();
         } catch (_) {
             // Ignore errors tearing down a stale subscription
         }
     }
-    queueSub = null;
-    queueZoneId = null;
-    queue = [];
 }
 
 export function initRoon(callbacks: RoonCallbacks) {
     const roon = new RoonApi({
         extension_id: "com.bluemancz.roonpipe",
         display_name: "RoonPipe",
-        display_version: "1.0.14",
+        display_version: "1.0.15",
         publisher: "BlueManCZ",
         email: "your@email.com",
         website: "https://github.com/bluemancz/roonpipe",
@@ -280,7 +296,7 @@ export function initRoon(callbacks: RoonCallbacks) {
         core_unpaired: (core: any) => {
             zone = null;
             coreInstance = null;
-            resetQueue();
+            resetQueue(core);
             callbacks.onCoreUnpaired(core);
             console.log(`Core unpaired: ${core.display_name}`);
 
@@ -298,7 +314,7 @@ export function initRoon(callbacks: RoonCallbacks) {
     roonApi = roon;
     roon.init_services({ required_services: [RoonApiBrowse, RoonApiImage, RoonApiTransport] });
     roon.start_discovery();
-    startPairingWatchdog(roon);
+    startPairingWatchdog();
 }
 
 export interface RoonAction {

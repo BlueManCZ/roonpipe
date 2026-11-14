@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.15] - 2026-11-14
+
+### Fixed
+
+- The daemon no longer crashes when the connection to the Roon Core drops (Core restart,
+  resume from suspend). Tearing down the queue subscription on an already-closed connection
+  raised an uncaught error inside the Roon API library; the daemon now skips that request
+  and reconnects as intended.
+- The pairing watchdog no longer keeps warning after a successful reconnect to the same Core.
+
 ## [1.0.14] - 2026-07-31
 
 ### Added

@@ -6,6 +6,9 @@ import { parseNowPlaying } from "./roon";
 let lastNotifiedTrack: string | null = null;
 let lastState: string | null = null;
 let isFirstUpdate = true;
+// ID the notification server gave our last notification, so the next one can
+// replace it. Only an ID returned by the server is valid as a replace ID.
+let lastNotificationId: number | null = null;
 
 /**
  * Show a desktop notification for the current track.
@@ -62,7 +65,8 @@ export async function showTrackNotification(zone: any, core: any) {
         const args = [
             `--app-name=Roon`,
             `--icon=audio-x-generic`,
-            `--replace-id=1`,
+            `--print-id`,
+            ...(lastNotificationId !== null ? [`--replace-id=${lastNotificationId}`] : []),
             `--hint=int:transient:1`,
             ...(artworkPath ? [`--hint=string:image-path:${artworkPath}`] : []),
             `--expire-time=5000`,
@@ -71,7 +75,12 @@ export async function showTrackNotification(zone: any, core: any) {
         ];
 
         console.log(`Showing notification for track: ${data.title}`);
-        execSync(`notify-send ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`);
+        const output = execSync(
+            `notify-send ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`,
+            { encoding: "utf8" },
+        );
+        const id = Number.parseInt(output.trim(), 10);
+        lastNotificationId = Number.isNaN(id) ? null : id;
 
         lastNotifiedTrack = trackId;
         lastState = zone.state;
